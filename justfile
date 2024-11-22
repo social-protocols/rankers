@@ -4,3 +4,9 @@ _default:
 
 run:
   cargo run
+
+migrate:
+  sqlx migrate run
+
+db:
+  sqlite3 $DATABASE_PATH

@@ -22,6 +22,7 @@
           git
           just
           sqlite-interactive
+          sqlx-cli
           rust-analyzer-unwrapped
           toolchain
         ];
