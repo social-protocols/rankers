@@ -1,13 +1,14 @@
 use axum::{
-    routing::get,
+    routing::{get, post},
     response::{Json, IntoResponse},
     Router,
-    extract::Extension,
+    extract::State,
 };
-use serde_json::{Value, json};
+use serde::Deserialize;
 use dotenv::dotenv;
 use std::env;
-use sqlx::sqlite::SqlitePool;
+use sqlx::{sqlite::SqlitePool, query};
+use anyhow::Result;
 
 #[tokio::main]
 async fn main() {
@@ -19,30 +20,43 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
-        .route("/halo", get(halo))
-        .route("/json", get(json))
         .route("/from_db", get(from_db))
-        .layer(Extension(pool));
+        .route("/send_vote_event", post(send_vote_event))
+        .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn halo() -> &'static str {
-    "Halo i bims widder lol!"
-}
-
-async fn json() -> Json<Value> {
-    Json(json!({ "data": 42 }))
-}
-
-async fn from_db(Extension(pool): Extension<SqlitePool>) -> impl IntoResponse {
+async fn from_db(State(pool): State<SqlitePool>) -> impl IntoResponse {
     let row: (i32,) =
-        sqlx::query_as("SELECT 42")
+        sqlx::query_as("select 42")
         .fetch_one(&pool)
         .await
         .expect("Failed to fetch row");
 
     format!("Result: {}", row.0)
+}
+
+#[derive(Deserialize)]
+struct VoteEvent {
+    vote_event_id: i32,
+    vote: i32,
+}
+
+async fn send_vote_event(
+    State(pool): State<SqlitePool>,
+    Json(payload): Json<VoteEvent>,
+) -> Result<impl IntoResponse, axum::http::StatusCode> {
+    if let Err(_) = query("insert into vote_event (vote_event_id, vote) values (?, ?)")
+        .bind(&payload.vote_event_id)
+        .bind(payload.vote)
+        .execute(&pool)
+        .await
+    {
+        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    Ok(axum::http::StatusCode::OK)
 }

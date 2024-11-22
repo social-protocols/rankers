@@ -10,3 +10,8 @@ migrate:
 
 db:
   sqlite3 $DATABASE_PATH
+
+reset-db:
+  rm -f $DATABASE_PATH
+  sqlite3 $DATABASE_PATH ".exit"
+  sqlx migrate run
