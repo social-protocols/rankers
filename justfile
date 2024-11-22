@@ -15,3 +15,6 @@ reset-db:
   rm -f $DATABASE_PATH
   sqlite3 $DATABASE_PATH ".exit"
   sqlx migrate run
+
+seed:
+  ./scripts/seed.sh
