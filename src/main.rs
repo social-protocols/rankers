@@ -45,21 +45,25 @@ struct VoteEvent {
     vote_event_id: i32,
     post_id: i32,
     vote: i32,
+    vote_event_time: i32,
 }
 
 #[derive(Deserialize)]
 struct NewsAggregatorPost {
     post_id: i32,
+    parent_id: i32,
     content: String,
+    created_at: i32,
 }
 
 async fn create_post(
     State(pool): State<SqlitePool>,
     Json(payload): Json<NewsAggregatorPost>,
 ) -> impl IntoResponse {
-    if let Err(_) = query("insert into post (post_id, content) values (?, ?)")
+    if let Err(_) = query("insert into post (post_id, content, created_at) values (?, ?, ?)")
         .bind(&payload.post_id)
         .bind(payload.content)
+        .bind(payload.created_at)
         .execute(&pool)
         .await
     {
@@ -73,10 +77,11 @@ async fn send_vote_event(
     State(pool): State<SqlitePool>,
     Json(payload): Json<VoteEvent>,
 ) -> Result<impl IntoResponse, axum::http::StatusCode> {
-    if let Err(_) = query("insert into vote_event (vote_event_id, post_id, vote) values (?, ?, ?)")
+    if let Err(_) = query("insert into vote_event (vote_event_id, post_id, vote, vote_event_time) values (?, ?, ?, ?)")
         .bind(&payload.vote_event_id)
-        .bind(&payload.post_id)
+        .bind(payload.post_id)
         .bind(payload.vote)
+        .bind(payload.vote_event_time)
         .execute(&pool)
         .await
     {
@@ -85,3 +90,6 @@ async fn send_vote_event(
 
     Ok(axum::http::StatusCode::OK)
 }
+
+async fn news_aggregator_ranking() {}
+

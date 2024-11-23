@@ -4,13 +4,15 @@ set -Eeuo pipefail
 
 post='{
   "post_id": 1,
-  "content": "Halo Weld, i bims lol"
+  "content": "Halo Weld, i bims lol",
+  "created_at": 100000
 }'
 
 vote_event='{
   "vote_event_id": 1,
   "post_id": 1,
-  "vote": 1
+  "vote": 1,
+  "vote_event_time": 100001
 }'
 
 curl -X POST http://localhost:3000/create_post \

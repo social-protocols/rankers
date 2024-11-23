@@ -14,19 +14,22 @@
       pkgs = import nixpkgs {
         inherit system;
         overlays = [rust-overlay.overlays.default];
+        config.allowUnfree = false;
       };
-      toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+      rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+      rustDevPkgs = [ rustToolchain ] ++ (with pkgs; [ cargo-watch rust-analyzer ]);
     in {
       devShells.default = pkgs.mkShell {
-        packages = with pkgs; [
+        packages = with pkgs; rustDevPkgs ++ [
           git
+          entr
           just
+          curl
+          # process-compose
           sqlite-interactive
           sqlx-cli
-          rust-analyzer-unwrapped
-          toolchain
         ];
-        RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
+        RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
       };
     }
   );
