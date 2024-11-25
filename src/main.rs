@@ -1,28 +1,34 @@
 use axum::{
     routing::{get, post},
-    response::{Json, IntoResponse},
+    Json,
+    response::{IntoResponse, Response},
     Router,
     extract::State,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use dotenv::dotenv;
-use std::env;
-use sqlx::{sqlite::SqlitePool, query};
+use sqlx::{
+    sqlite::{SqlitePool},
+    query,
+};
 use anyhow::Result;
+use axum::http::StatusCode;
+
+mod database;
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = SqlitePool::connect(&database_url)
-        .await
-        .expect("Failed to create pool.");
+
+    let pool = database::setup_database().await.expect("Failed to create database pool");
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/from_db", get(from_db))
         .route("/create_post", post(create_post))
         .route("/send_vote_event", post(send_vote_event))
+        .route("/rankings/hn", get(get_hacker_news_ranking))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
@@ -30,22 +36,12 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn from_db(State(pool): State<SqlitePool>) -> impl IntoResponse {
-    let row: (i32,) =
-        sqlx::query_as("select 42")
-        .fetch_one(&pool)
-        .await
-        .expect("Failed to fetch row");
-
-    format!("Result: {}", row.0)
-}
-
 #[derive(Deserialize)]
 struct VoteEvent {
     vote_event_id: i32,
     post_id: i32,
     vote: i32,
-    vote_event_time: i32,
+    vote_event_time: i64,
 }
 
 #[derive(Deserialize)]
@@ -53,7 +49,7 @@ struct NewsAggregatorPost {
     post_id: i32,
     parent_id: Option<i32>,
     content: String,
-    created_at: i32,
+    created_at: i64,
 }
 
 async fn create_post(
@@ -92,5 +88,96 @@ async fn send_vote_event(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn news_aggregator_ranking() {}
+#[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
+struct HNPost {
+    post_id: i32,
+    upvotes: i32,
+    age_hours: f32,
+}
 
+#[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
+struct HNScoredPost {
+    post_id: i32,
+    score: f32,
+}
+
+impl HNScoredPost {
+    fn from_hn_post(post: HNPost) -> HNScoredPost {
+        HNScoredPost { post_id: post.post_id, score: (post.upvotes as f32).powf(0.8) / (post.age_hours + 2.0).powf(1.8) }
+    }
+}
+
+async fn get_hacker_news_ranking(State(pool): State<SqlitePool>) -> Result<Json<Vec<HNScoredPost>>, AppError> {
+    let rows: Vec<HNPost> = sqlx::query_as::<_, HNPost>("
+        with upvote_counts as (
+          select
+            post_id
+            , count(*) as upvotes
+          from vote_event
+          where vote = 1
+          group by post_id
+        )
+        , age_hours as (
+          select
+            p.post_id
+            , (unixepoch('subsec') * 1000 - p.created_at) / 1000 / 60 / 60 as age_hours
+          from post p
+        )
+        select
+          p.post_id as post_id
+          , uc.upvotes as upvotes
+          , ah.age_hours as age_hours
+        from post p
+        join upvote_counts uc
+        on p.post_id = uc.post_id
+        join age_hours ah
+        on p.post_id = ah.post_id
+    ")
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to fetch row");
+
+    let scored_posts: Vec<HNScoredPost> = rows.into_iter().map(HNScoredPost::from_hn_post).collect();
+
+    Ok(Json(scored_posts))
+}
+
+// --------------------------------------------------------------------
+// INLINED FROM: https://github.com/social-protocols/prototype-1/blob/main/src/error.rs
+// --------------------------------------------------------------------
+
+// https://github.com/tokio-rs/axum/blob/main/examples/anyhow-error-response/src/main.rs
+pub struct AppError(pub anyhow::Error);
+
+// Tell axum how to convert `AppError` into a response.
+// https://github.com/tokio-rs/axum/discussions/713
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, error_message) = match self {
+            AppError(inner) => {
+                tracing::debug!("stacktrace: {}", inner.backtrace());
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error")
+            }
+        };
+
+        let body = Json(json!({
+            "error": error_message,
+        }));
+
+        (status, body).into_response()
+    }
+}
+
+// This enables using `?` on functions that return `Result<_, anyhow::Error>` to turn them into
+// `Result<_, AppError>`. That way you don't need to do that manually.
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        AppError(err.into())
+    }
+}
+
+// --------------------------------------------------------------------
+// --------------------------------------------------------------------
