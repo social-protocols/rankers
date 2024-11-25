@@ -18,3 +18,7 @@ reset-db:
 
 seed:
   ./scripts/seed.sh
+
+# TODO: configure in editor config (on save)
+format:
+  cargo fmt

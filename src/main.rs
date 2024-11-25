@@ -1,19 +1,15 @@
-use axum::{
-    routing::{get, post},
-    Json,
-    response::{IntoResponse, Response},
-    Router,
-    extract::State,
-};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use dotenv::dotenv;
-use sqlx::{
-    sqlite::{SqlitePool},
-    query,
-};
 use anyhow::Result;
 use axum::http::StatusCode;
+use axum::{
+    extract::State,
+    response::{IntoResponse, Response},
+    routing::{get, post},
+    Json, Router,
+};
+use dotenv::dotenv;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sqlx::{query, sqlite::SqlitePool};
 
 mod database;
 
@@ -21,7 +17,9 @@ mod database;
 async fn main() {
     dotenv().ok();
 
-    let pool = database::setup_database().await.expect("Failed to create database pool");
+    let pool = database::setup_database()
+        .await
+        .expect("Failed to create database pool");
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
@@ -56,13 +54,14 @@ async fn create_post(
     State(pool): State<SqlitePool>,
     Json(payload): Json<NewsAggregatorPost>,
 ) -> impl IntoResponse {
-    if let Err(_) = query("insert into post (post_id, parent_id, content, created_at) values (?, ?, ?, ?)")
-        .bind(&payload.post_id)
-        .bind(payload.parent_id)
-        .bind(payload.content)
-        .bind(payload.created_at)
-        .execute(&pool)
-        .await
+    if let Err(_) =
+        query("insert into post (post_id, parent_id, content, created_at) values (?, ?, ?, ?)")
+            .bind(&payload.post_id)
+            .bind(payload.parent_id)
+            .bind(payload.content)
+            .bind(payload.created_at)
+            .execute(&pool)
+            .await
     {
         return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -103,12 +102,18 @@ struct HNScoredPost {
 
 impl HNScoredPost {
     fn from_hn_post(post: HNPost) -> HNScoredPost {
-        HNScoredPost { post_id: post.post_id, score: (post.upvotes as f32).powf(0.8) / (post.age_hours + 2.0).powf(1.8) }
+        HNScoredPost {
+            post_id: post.post_id,
+            score: (post.upvotes as f32).powf(0.8) / (post.age_hours + 2.0).powf(1.8),
+        }
     }
 }
 
-async fn get_hacker_news_ranking(State(pool): State<SqlitePool>) -> Result<Json<Vec<HNScoredPost>>, AppError> {
-    let rows: Vec<HNPost> = sqlx::query_as::<_, HNPost>("
+async fn get_hacker_news_ranking(
+    State(pool): State<SqlitePool>,
+) -> Result<Json<Vec<HNScoredPost>>, AppError> {
+    let rows: Vec<HNPost> = sqlx::query_as::<_, HNPost>(
+        "
         with upvote_counts as (
           select
             post_id
@@ -132,12 +137,14 @@ async fn get_hacker_news_ranking(State(pool): State<SqlitePool>) -> Result<Json<
         on p.post_id = uc.post_id
         join age_hours ah
         on p.post_id = ah.post_id
-    ")
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to fetch row");
+    ",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("Failed to fetch row");
 
-    let scored_posts: Vec<HNScoredPost> = rows.into_iter().map(HNScoredPost::from_hn_post).collect();
+    let scored_posts: Vec<HNScoredPost> =
+        rows.into_iter().map(HNScoredPost::from_hn_post).collect();
 
     Ok(Json(scored_posts))
 }
