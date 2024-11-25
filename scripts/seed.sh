@@ -4,6 +4,7 @@ set -Eeuo pipefail
 
 post='{
   "post_id": 1,
+  "parent_id": null,
   "content": "Halo Weld, i bims lol",
   "created_at": 100000
 }'

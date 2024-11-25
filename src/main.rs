@@ -51,7 +51,7 @@ struct VoteEvent {
 #[derive(Deserialize)]
 struct NewsAggregatorPost {
     post_id: i32,
-    parent_id: i32,
+    parent_id: Option<i32>,
     content: String,
     created_at: i32,
 }
@@ -60,8 +60,9 @@ async fn create_post(
     State(pool): State<SqlitePool>,
     Json(payload): Json<NewsAggregatorPost>,
 ) -> impl IntoResponse {
-    if let Err(_) = query("insert into post (post_id, content, created_at) values (?, ?, ?)")
+    if let Err(_) = query("insert into post (post_id, parent_id, content, created_at) values (?, ?, ?, ?)")
         .bind(&payload.post_id)
+        .bind(payload.parent_id)
         .bind(payload.content)
         .bind(payload.created_at)
         .execute(&pool)
