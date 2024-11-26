@@ -23,7 +23,6 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
-        .route("/from_db", get(from_db))
         .route("/create_post", post(create_post))
         .route("/send_vote_event", post(send_vote_event))
         .route("/rankings/hn", get(get_hacker_news_ranking))
