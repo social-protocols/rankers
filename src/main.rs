@@ -53,14 +53,22 @@ async fn create_post(
     State(pool): State<SqlitePool>,
     Json(payload): Json<NewsAggregatorPost>,
 ) -> impl IntoResponse {
-    if let Err(_) =
-        query("insert into post (post_id, parent_id, content, created_at) values (?, ?, ?, ?)")
-            .bind(&payload.post_id)
-            .bind(payload.parent_id)
-            .bind(payload.content)
-            .bind(payload.created_at)
-            .execute(&pool)
-            .await
+    if let Err(_) = query(
+        "
+        insert into post (
+              post_id
+            , parent_id
+            , content
+            , created_at
+        ) values (?, ?, ?, ?)
+        ",
+    )
+    .bind(&payload.post_id)
+    .bind(payload.parent_id)
+    .bind(payload.content)
+    .bind(payload.created_at)
+    .execute(&pool)
+    .await
     {
         return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -72,13 +80,22 @@ async fn send_vote_event(
     State(pool): State<SqlitePool>,
     Json(payload): Json<VoteEvent>,
 ) -> Result<impl IntoResponse, axum::http::StatusCode> {
-    if let Err(_) = query("insert into vote_event (vote_event_id, post_id, vote, vote_event_time) values (?, ?, ?, ?)")
-        .bind(&payload.vote_event_id)
-        .bind(payload.post_id)
-        .bind(payload.vote)
-        .bind(payload.vote_event_time)
-        .execute(&pool)
-        .await
+    if let Err(_) = query(
+        "
+        insert into vote_event (
+              vote_event_id
+            , post_id
+            , vote
+            , vote_event_time
+        ) values (?, ?, ?, ?)
+        ",
+    )
+    .bind(&payload.vote_event_id)
+    .bind(payload.post_id)
+    .bind(payload.vote)
+    .bind(payload.vote_event_time)
+    .execute(&pool)
+    .await
     {
         return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -136,14 +153,18 @@ async fn get_hacker_news_ranking(
         on p.post_id = uc.post_id
         join age_hours ah
         on p.post_id = ah.post_id
-    ",
+        where p.parent_id is null
+        order by p.created_at desc
+        limit 1500
+        ",
     )
     .fetch_all(&pool)
     .await
     .expect("Failed to fetch row");
 
-    let scored_posts: Vec<HNScoredPost> =
-        rows.into_iter().map(HNScoredPost::from_hn_post).collect();
+    let scored_posts: Vec<HNScoredPost> = rows.into_iter()
+        .map(HNScoredPost::from_hn_post)
+        .collect();
 
     Ok(Json(scored_posts))
 }
