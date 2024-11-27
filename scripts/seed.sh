@@ -46,8 +46,6 @@ EOF
     curl -X POST "$API_POST_ENDPOINT" \
          -H "Content-Type: application/json" \
          -d "$post_json"
-
-    sleep 0.1
 }
 
 generate_vote_event() {
@@ -79,9 +77,6 @@ EOF
     curl -X POST "$API_VOTE_ENDPOINT" \
          -H "Content-Type: application/json" \
          -d "$vote_event_json"
-
-    # Add a small delay to prevent overwhelming the server
-    sleep 0.05
 }
 
 
