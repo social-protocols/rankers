@@ -12,3 +12,4 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
 dotenv = "0.15.0"
 anyhow = "1.0.93"
 tracing = "0.1.40"
+tokio-cron-scheduler = "0.13.0"
