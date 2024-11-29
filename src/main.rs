@@ -6,6 +6,7 @@ mod api;
 mod database;
 mod error;
 mod http_server;
+mod model;
 
 #[tokio::main]
 async fn main() -> Result<()> {

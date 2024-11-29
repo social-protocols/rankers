@@ -1,50 +1,12 @@
 use crate::error::AppError;
+use crate::model;
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
-use serde::{Deserialize, Serialize};
 use sqlx::{query, sqlite::SqlitePool};
-
-#[derive(Deserialize)]
-pub struct VoteEvent {
-    vote_event_id: i32,
-    post_id: i32,
-    vote: i32,
-    vote_event_time: i64,
-}
-
-#[derive(Deserialize)]
-pub struct NewsAggregatorPost {
-    post_id: i32,
-    parent_id: Option<i32>,
-    content: String,
-    created_at: i64,
-}
-
-#[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
-pub struct HNPost {
-    post_id: i32,
-    upvotes: i32,
-    age_hours: f32,
-}
-
-#[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
-pub struct HNScoredPost {
-    post_id: i32,
-    score: f32,
-}
-
-impl HNScoredPost {
-    fn from_hn_post(post: HNPost) -> HNScoredPost {
-        HNScoredPost {
-            post_id: post.post_id,
-            score: (post.upvotes as f32).powf(0.8) / (post.age_hours + 2.0).powf(1.8),
-        }
-    }
-}
 
 pub async fn create_post(
     State(pool): State<SqlitePool>,
-    Json(payload): Json<NewsAggregatorPost>,
+    Json(payload): Json<model::NewsAggregatorPost>,
 ) -> impl IntoResponse {
     if let Err(_) = query(
         "
@@ -71,7 +33,7 @@ pub async fn create_post(
 
 pub async fn send_vote_event(
     State(pool): State<SqlitePool>,
-    Json(payload): Json<VoteEvent>,
+    Json(payload): Json<model::VoteEvent>,
 ) -> Result<impl IntoResponse, axum::http::StatusCode> {
     if let Err(_) = query(
         "
@@ -98,8 +60,8 @@ pub async fn send_vote_event(
 
 pub async fn get_hacker_news_ranking(
     State(pool): State<SqlitePool>,
-) -> Result<Json<Vec<HNScoredPost>>, AppError> {
-    let rows: Vec<HNPost> = sqlx::query_as::<_, HNPost>(
+) -> Result<Json<Vec<model::HNScoredPost>>, AppError> {
+    let rows: Vec<model::HNPost> = sqlx::query_as::<_, model::HNPost>(
         "
         with upvote_counts as (
           select
@@ -133,8 +95,10 @@ pub async fn get_hacker_news_ranking(
     .await
     .expect("Failed to fetch row");
 
-    let scored_posts: Vec<HNScoredPost> =
-        rows.into_iter().map(HNScoredPost::from_hn_post).collect();
+    let scored_posts: Vec<model::HNScoredPost> = rows
+        .into_iter()
+        .map(model::HNScoredPost::from_hn_post)
+        .collect();
 
     Ok(Json(scored_posts))
 }

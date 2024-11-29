@@ -10,6 +10,7 @@ use axum::{
 use serde_json::json;
 
 // https://github.com/tokio-rs/axum/blob/main/examples/anyhow-error-response/src/main.rs
+#[derive(Debug)]
 pub struct AppError(pub anyhow::Error);
 
 // Tell axum how to convert `AppError` into a response.
