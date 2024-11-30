@@ -12,13 +12,19 @@ create table if not exists vote_event (
   , vote_event_time integer not null default (unixepoch('subsec') * 1000)
 ) strict;
 
-create table if not exists rank_samples (
+create table if not exists stats_history (
     post_id         integer not null references post(post_id)
   , sample_time     integer not null
-  , submission_time integer not null -- to calculate age
+  , submission_time integer not null
+  , upvote_count    integer not null
   -- , rank_top integer not null
   -- -- TODO: devise scheme to add other ranks if there are several pages
-  , upvote_count    integer not null
   -- , cumulative_expected_upvotes real not null
   -- , upvote_rate real not null
-)
+) strict;
+
+create table if not exists rank_history (
+    post_id     integer not null
+  , sample_time integer not null
+  , rank_top    integer
+) strict;

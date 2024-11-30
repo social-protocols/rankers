@@ -44,3 +44,10 @@ pub struct PostWithStats {
     pub submission_time: i64,
     pub upvote_count: i32,
 }
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
+pub struct PostWithRanks {
+    pub post_id: i32,
+    pub sample_time: i64,
+    pub rank_top: i32,
+}

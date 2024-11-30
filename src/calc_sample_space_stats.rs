@@ -34,7 +34,7 @@
 // TODO: get previous cumulative expected upvotes, then calculate expected upvotes for this
 // tick -> add, and voila, we have cumulative_expected_upvotes
 
-use crate::model::PostWithStats;
+use crate::model::{PostWithRanks, PostWithStats};
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse};
 use sqlx::{query, sqlite::SqlitePool};
@@ -52,10 +52,14 @@ pub async fn sample_ranks(State(pool): State<SqlitePool>) -> impl IntoResponse {
 
     println!("Sampling posts at: {:?}", sample_time);
 
+    get_ranks_from_previous_tick(State(pool.clone()))
+        .await
+        .unwrap();
+
     for ns in &newest_stories {
         if let Err(_) = query(
             "
-            insert into rank_samples (
+            insert into stats_history (
                   post_id
                 , sample_time
                 , submission_time
@@ -75,6 +79,55 @@ pub async fn sample_ranks(State(pool): State<SqlitePool>) -> impl IntoResponse {
     }
 
     Ok(axum::http::StatusCode::OK)
+}
+
+async fn get_ranks_from_previous_tick(
+    State(pool): State<SqlitePool>,
+) -> Result<Vec<PostWithRanks>> {
+    let ranks: Vec<PostWithRanks> = sqlx::query_as(
+        "
+        select
+              post_id
+            , sample_time
+            , rank_top
+        from rank_history
+        where rank_top <= 90
+        and sample_time = (
+          select max(sample_time)
+          from rank_history
+        )
+        ",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("Failed to get ranks for current tick");
+
+    if ranks.len() == 0 {
+        println!("No ranks recorded yet - Initializing...");
+        let _posts_in_pool: Vec<PostWithRanks> = sqlx::query_as(
+            "
+            with posts_in_pool as (
+                select
+                      post_id
+                    , 0 as sample_time
+                    , row_number() over (order by created_at desc) as rank_top
+                from post
+                limit 1500
+            )
+            insert into rank_history
+            select * from posts_in_pool
+            ",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to get posts in pool");
+    } else {
+        for r in &ranks {
+            println!("Rank: {:?}", r);
+        }
+    }
+
+    Ok(vec![])
 }
 
 async fn get_newest_posts_with_stats(State(pool): State<SqlitePool>) -> Result<Vec<PostWithStats>> {
