@@ -16,7 +16,7 @@ migrate:
   sqlx migrate run
 
 db:
-  sqlite3 $DATABASE_PATH
+  litecli $DATABASE_PATH
 
 seed:
   ./scripts/seed.sh

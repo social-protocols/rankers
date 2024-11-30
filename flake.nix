@@ -27,6 +27,7 @@
           curl
           # process-compose
           sqlite-interactive
+          litecli
           sqlx-cli
         ];
         RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
