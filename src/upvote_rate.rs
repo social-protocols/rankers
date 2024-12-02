@@ -19,6 +19,43 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub async fn sample_ranks(
     pool: &SqlitePool,
 ) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
+    // TODO: come up with a better initialization logic
+
+    let n_posts: i32 = sqlx::query_scalar("select count(*) from post")
+        .fetch_one(pool)
+        .await
+        .expect("Couldn't get post count");
+    if n_posts == 0 {
+        println!("Waiting for posts to rank - Skipping...");
+        return Ok(axum::http::StatusCode::OK);
+    }
+
+    let rank_history_size: i32 = sqlx::query_scalar("select count(*) from rank_history")
+        .fetch_one(pool)
+        .await
+        .expect("Couldn't get rank history size");
+    if rank_history_size == 0 {
+        println!("No ranks recorded yet - Initializing...");
+        let _: Vec<PostWithRanks> = sqlx::query_as(
+            "
+            with posts_in_pool as (
+                select
+                      post_id
+                    , 0 as sample_time
+                    , row_number() over (order by created_at desc) as rank_top
+                from post
+                limit 1500
+            )
+            insert into rank_history
+            select * from posts_in_pool
+            returning *
+            ",
+        )
+        .fetch_all(pool)
+        .await
+        .expect("Failed to get posts in pool");
+    }
+
     let sample_time: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("Couldn't get current time to record sample time")
@@ -26,7 +63,7 @@ pub async fn sample_ranks(
 
     println!("Sampling posts at: {:?}", sample_time);
 
-    insert_stats_from_current_tick(&pool, sample_time).await;
+    let _ = insert_stats_from_current_tick(&pool, sample_time).await;
 
     // TODO: eventually, rank by upvote rate
     let ranks = get_ranks_from_previous_tick(&pool).await.unwrap();
@@ -43,13 +80,17 @@ pub async fn sample_ranks(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn insert_stats_from_current_tick(pool: &SqlitePool, sample_time: i64) -> impl IntoResponse {
+async fn insert_stats_from_current_tick(
+    pool: &SqlitePool,
+    sample_time: i64,
+) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
     let stats: Vec<StatsObservation> = get_posts_with_stats_for_current_tick(&pool).await.unwrap();
 
-    for s in stats {
+    for s in &stats {
         let newly_observed_expected_upvotes = get_expected_upvotes_at_tick(&pool, s.post_id)
             .await
             .unwrap();
+        let current_upvote_count = get_current_upvote_count(&pool, s.post_id).await.unwrap();
         if let Err(_) = query(
             "
             insert into stats_history (
@@ -62,7 +103,7 @@ async fn insert_stats_from_current_tick(pool: &SqlitePool, sample_time: i64) -> 
         )
         .bind(s.post_id)
         .bind(sample_time)
-        .bind(s.cumulative_upvotes) // TODO: update with newly observed upvotes
+        .bind(current_upvote_count)
         .bind(s.cumulative_expected_upvotes + newly_observed_expected_upvotes)
         .execute(pool)
         .await
@@ -72,6 +113,25 @@ async fn insert_stats_from_current_tick(pool: &SqlitePool, sample_time: i64) -> 
     }
 
     Ok(axum::http::StatusCode::OK)
+}
+
+async fn get_current_upvote_count(pool: &SqlitePool, post_id: i32) -> Result<i32> {
+    let upvote_count: i32 = sqlx::query_scalar(
+        "
+        select count(*)
+        from post p
+        join vote_event ve
+        on p.post_id = ve.post_id
+        where vote = 1
+        and p.post_id = ?
+        ",
+    )
+    .bind(post_id)
+    .fetch_one(pool)
+    .await
+    .expect("Failed to get current vote count");
+
+    Ok(upvote_count)
 }
 
 async fn insert_ranks_from_current_tick(
@@ -125,10 +185,10 @@ async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<
                   np.post_id
                 , lsh.sample_time
                 , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
-                , coalesce(lsh.cumulative_expected_upvotes, 0) as cumulative_expected_upvotes
+                , coalesce(lsh.cumulative_expected_upvotes, 0.0) as cumulative_expected_upvotes
             from newest_posts np
-            join latest_stats_history lsh
-            where np.post_id = lsh.post_id
+            left outer join latest_stats_history lsh
+            on np.post_id = lsh.post_id
         )
         select
               post_id
@@ -143,6 +203,8 @@ async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<
     .await
     .expect("Failed to get newest stories");
 
+    println!("Currently tracked stories: {:?}", newest_stories.len());
+
     Ok(newest_stories)
 }
 
@@ -152,7 +214,7 @@ async fn get_expected_upvotes_at_tick(pool: &SqlitePool, post_id: i32) -> Result
         "
         select ubr.avg_upvotes
         from rank_history rh
-        join upvotes_by_rank ubr
+        left outer join upvotes_by_rank ubr
         on rh.rank_top = ubr.rank_top
         where sample_time = (
             select max(sample_time)
@@ -169,6 +231,7 @@ async fn get_expected_upvotes_at_tick(pool: &SqlitePool, post_id: i32) -> Result
     Ok(expected_upvotes_by_post)
 }
 
+// TODO: remove once ranking by upvote rate works
 async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithRanks>> {
     let ranks: Vec<PostWithRanks> = sqlx::query_as(
         "
@@ -187,29 +250,6 @@ async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithR
     .fetch_all(pool)
     .await
     .expect("Failed to get ranks for current tick");
-
-    if ranks.len() == 0 {
-        println!("No ranks recorded yet - Initializing...");
-        let init_ranks: Vec<PostWithRanks> = sqlx::query_as(
-            "
-            with posts_in_pool as (
-                select
-                      post_id
-                    , 0 as sample_time
-                    , row_number() over (order by created_at desc) as rank_top
-                from post
-                limit 1500
-            )
-            insert into rank_history
-            select * from posts_in_pool
-            returning *
-            ",
-        )
-        .fetch_all(pool)
-        .await
-        .expect("Failed to get posts in pool");
-        return Ok(init_ranks);
-    }
 
     Ok(ranks)
 }

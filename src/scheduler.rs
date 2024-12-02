@@ -10,7 +10,7 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
     let job_pool = Arc::clone(&pool);
 
     // TODO: change to once a minute for production
-    let cron_expression = "1/20 * * * * *";
+    let cron_expression = "1/12 * * * * *";
 
     // Job runs every minute
     scheduler
