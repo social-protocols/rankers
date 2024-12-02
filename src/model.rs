@@ -51,3 +51,10 @@ pub struct PostWithRanks {
     pub sample_time: i64,
     pub rank_top: i32,
 }
+
+#[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
+pub struct UpvotesByRank {
+    pub rank_top: i32,
+    pub avg_upvotes: f32,
+}
+
