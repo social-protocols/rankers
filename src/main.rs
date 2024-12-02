@@ -1,38 +1,28 @@
 use anyhow::Result;
-use axum::extract::State;
 use dotenv::dotenv;
 use http_server::start_http_server;
-use tokio_cron_scheduler::{Job, JobScheduler};
+use std::sync::Arc;
 
 mod api;
-mod calc_sample_space_stats;
 mod database;
 mod error;
 mod http_server;
 mod model;
+mod scheduler;
+mod upvote_rate;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
 
-    let scheduler = JobScheduler::new().await?;
-
-    let pool = database::setup_database()
+    let pool: sqlx::SqlitePool = database::setup_database()
         .await
         .expect("Failed to create database pool");
 
-    scheduler
-        .add(Job::new_async("0 * * * * *", |_uuid, _l| {
-            Box::pin(async move {
-                let pool = database::setup_database()
-                    .await
-                    .expect("Failed to create database pool");
-                calc_sample_space_stats::sample_ranks(State(pool)).await;
-            })
-        })?)
-        .await?;
-
-    scheduler.start().await?;
+    let shared_pool = Arc::new(pool.clone());
+    scheduler::start_scheduler(Arc::clone(&shared_pool))
+        .await
+        .expect("Couldn't setup scheduler");
 
     start_http_server(pool).await?;
 

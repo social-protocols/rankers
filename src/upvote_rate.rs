@@ -36,14 +36,12 @@
 
 use crate::model::{PostWithRanks, PostWithStats};
 use anyhow::Result;
-use axum::{extract::State, response::IntoResponse};
+use axum::response::IntoResponse;
 use sqlx::{query, sqlite::SqlitePool};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub async fn sample_ranks(State(pool): State<SqlitePool>) -> impl IntoResponse {
-    let newest_stories: Vec<PostWithStats> = get_newest_posts_with_stats(State(pool.clone()))
-        .await
-        .unwrap();
+pub async fn sample_ranks(pool: &SqlitePool) -> impl IntoResponse {
+    let newest_stories: Vec<PostWithStats> = get_newest_posts_with_stats(&pool).await.unwrap();
 
     let sample_time: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -52,9 +50,7 @@ pub async fn sample_ranks(State(pool): State<SqlitePool>) -> impl IntoResponse {
 
     println!("Sampling posts at: {:?}", sample_time);
 
-    get_ranks_from_previous_tick(State(pool.clone()))
-        .await
-        .unwrap();
+    get_ranks_from_previous_tick(&pool).await.unwrap();
 
     for ns in &newest_stories {
         if let Err(_) = query(
@@ -71,7 +67,7 @@ pub async fn sample_ranks(State(pool): State<SqlitePool>) -> impl IntoResponse {
         .bind(sample_time)
         .bind(ns.submission_time)
         .bind(ns.upvote_count)
-        .execute(&pool)
+        .execute(pool)
         .await
         {
             return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
@@ -81,9 +77,7 @@ pub async fn sample_ranks(State(pool): State<SqlitePool>) -> impl IntoResponse {
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn get_ranks_from_previous_tick(
-    State(pool): State<SqlitePool>,
-) -> Result<Vec<PostWithRanks>> {
+async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithRanks>> {
     let ranks: Vec<PostWithRanks> = sqlx::query_as(
         "
         select
@@ -98,7 +92,7 @@ async fn get_ranks_from_previous_tick(
         )
         ",
     )
-    .fetch_all(&pool)
+    .fetch_all(pool)
     .await
     .expect("Failed to get ranks for current tick");
 
@@ -118,7 +112,7 @@ async fn get_ranks_from_previous_tick(
             select * from posts_in_pool
             ",
         )
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
         .expect("Failed to get posts in pool");
     } else {
@@ -130,7 +124,7 @@ async fn get_ranks_from_previous_tick(
     Ok(vec![])
 }
 
-async fn get_newest_posts_with_stats(State(pool): State<SqlitePool>) -> Result<Vec<PostWithStats>> {
+async fn get_newest_posts_with_stats(pool: &SqlitePool) -> Result<Vec<PostWithStats>> {
     let newest_stories = sqlx::query_as::<_, PostWithStats>(
         "
         with newest_posts as (
@@ -157,7 +151,7 @@ async fn get_newest_posts_with_stats(State(pool): State<SqlitePool>) -> Result<V
         order by upvote_count desc
         ",
     )
-    .fetch_all(&pool)
+    .fetch_all(pool)
     .await
     .expect("Failed to get newest stories");
 
