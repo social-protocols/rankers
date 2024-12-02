@@ -39,10 +39,11 @@ impl HNScoredPost {
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
-pub struct PostWithStats {
+pub struct StatsObservation {
     pub post_id: i32,
-    pub submission_time: i64,
-    pub upvote_count: i32,
+    pub sample_time: i64,
+    pub cumulative_upvotes: i32,
+    pub cumulative_expected_upvotes: f32,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
@@ -57,4 +58,3 @@ pub struct UpvotesByRank {
     pub rank_top: i32,
     pub avg_upvotes: f32,
 }
-

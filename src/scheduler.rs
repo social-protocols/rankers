@@ -9,12 +9,16 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
 
     let job_pool = Arc::clone(&pool);
 
+    // TODO: change to once a minute for production
+    let cron_expression = "1/20 * * * * *";
+
     // Job runs every minute
     scheduler
-        .add(Job::new_async("0 * * * * *", move |_uuid, _l| {
+        .add(Job::new_async(cron_expression, move |_uuid, _l| {
             let job_pool = Arc::clone(&job_pool);
             Box::pin(async move {
-                upvote_rate::sample_ranks(&job_pool).await;
+                // TODO: handle error case
+                let _ = upvote_rate::sample_ranks(&job_pool).await;
             })
         })?)
         .await?;

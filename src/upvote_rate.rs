@@ -1,82 +1,69 @@
 // SUMMARY:
 // ============================================================================================
-// FOR EACH STORY:
-// --------------------------------------------------------------------------------------------
-// REQUIRED (at sampletime):
-// - current best rank (according to this metric)
-// - current upvote count
-// - current cumulative expected upvotes
-// --------------------------------------------------------------------------------------------
-// DERIVED:
-// - upvote_rate
-// --------------------------------------------------------------------------------------------
-// REQUIRED:
-// - a starting condition: if the rank_samples table is empty, there needs to be a default
-// - then, the scheme is properly initialized
-// - or better yet, for the first sample, all ranks are NULL
-// - and then, ranks are calculated by another tie break (e.g., created_at)
-//
 // NOTES:
 // - sitewide upvotes is just count of all upvotes that happened after the last sampletime
 // - we don't necessarily want users of the service to have to track where votes occured, so we
-// still needa scheme to estimate upvote share per page
+// still need a scheme to estimate upvote share per page
 //
-// AGENDA:
-// - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg once a
-// week)
-//
-// TODO: get ranks for each of the posts in the current sample pool
-// - so we need some sort of a get ranks function
-// - This is different from the Quality News setup. In QN, we observe the HN pages, we don't
-// assign ranks ourselves. Here, we are in control of the entire system. We can get the ranks
-// from within our system.
-//
-// TODO: get previous cumulative expected upvotes, then calculate expected upvotes for this
-// tick -> add, and voila, we have cumulative_expected_upvotes
+// TODO:
+// - [ ] calculate cumulative expected upvotes as previous cumulative expected upvotes + expected
+// upvotes at rank combination at current tick
+// - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 
-use crate::model::{PostWithRanks, PostWithStats, UpvotesByRank};
+use crate::model::{PostWithRanks, StatsObservation};
 use anyhow::Result;
 use axum::response::IntoResponse;
 use sqlx::{query, sqlite::SqlitePool};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub async fn sample_ranks(pool: &SqlitePool) -> impl IntoResponse {
-    let newest_stories: Vec<PostWithStats> = get_newest_posts_with_stats(&pool).await.unwrap();
-
+pub async fn sample_ranks(
+    pool: &SqlitePool,
+) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
     let sample_time: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
+        .expect("Couldn't get current time to record sample time")
         .as_millis() as i64;
 
     println!("Sampling posts at: {:?}", sample_time);
 
-    let ranks = get_ranks_from_previous_tick(&pool).await.unwrap();
+    insert_stats_from_current_tick(&pool, sample_time).await;
 
     // TODO: eventually, rank by upvote rate
-    let new_ranks: Vec<PostWithRanks> = ranks.iter().map(|ranked_post| PostWithRanks { post_id: ranked_post.post_id, sample_time, rank_top: ranked_post.rank_top }).collect();
+    let ranks = get_ranks_from_previous_tick(&pool).await.unwrap();
+    let new_ranks: Vec<PostWithRanks> = ranks
+        .iter()
+        .map(|ranked_post| PostWithRanks {
+            post_id: ranked_post.post_id,
+            sample_time,
+            rank_top: ranked_post.rank_top,
+        })
+        .collect();
     insert_ranks_from_current_tick(&pool, &new_ranks).await;
 
-    let upvotes_by_rank = get_avg_upvotes_by_rank(&pool).await.unwrap();
-    println!("Upvotes by Rank at {:?}", sample_time);
-    for ur in &upvotes_by_rank {
-        println!("{:?}", ur);
-    }
+    Ok(axum::http::StatusCode::OK)
+}
 
-    for ns in &newest_stories {
+async fn insert_stats_from_current_tick(pool: &SqlitePool, sample_time: i64) -> impl IntoResponse {
+    let stats: Vec<StatsObservation> = get_posts_with_stats_for_current_tick(&pool).await.unwrap();
+
+    for s in stats {
+        let newly_observed_expected_upvotes = get_expected_upvotes_at_tick(&pool, s.post_id)
+            .await
+            .unwrap();
         if let Err(_) = query(
             "
             insert into stats_history (
                   post_id
                 , sample_time
-                , submission_time
-                , upvote_count
+                , cumulative_upvotes
+                , cumulative_expected_upvotes
             ) values (?, ?, ?, ?)
             ",
         )
-        .bind(ns.post_id)
+        .bind(s.post_id)
         .bind(sample_time)
-        .bind(ns.submission_time)
-        .bind(ns.upvote_count)
+        .bind(s.cumulative_upvotes) // TODO: update with newly observed upvotes
+        .bind(s.cumulative_expected_upvotes + newly_observed_expected_upvotes)
         .execute(pool)
         .await
         {
@@ -87,7 +74,10 @@ pub async fn sample_ranks(pool: &SqlitePool) -> impl IntoResponse {
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn insert_ranks_from_current_tick(pool: &SqlitePool, ranks: &Vec<PostWithRanks>) -> impl IntoResponse {
+async fn insert_ranks_from_current_tick(
+    pool: &SqlitePool,
+    ranks: &Vec<PostWithRanks>,
+) -> impl IntoResponse {
     for r in ranks {
         if let Err(_) = query(
             "
@@ -109,6 +99,74 @@ async fn insert_ranks_from_current_tick(pool: &SqlitePool, ranks: &Vec<PostWithR
     }
 
     Ok(axum::http::StatusCode::OK)
+}
+
+async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<StatsObservation>> {
+    let newest_stories = sqlx::query_as::<_, StatsObservation>(
+        "
+        with newest_posts as (
+            select
+                  post_id
+                , created_at
+            from post
+            order by created_at desc
+            limit 1500
+        )
+        , latest_stats_history as (
+            select *
+            from stats_history
+            where sample_time = (
+                select max(sample_time)
+                from stats_history
+            )
+        )
+        , with_cumulative_expected_upvotes as (
+            select
+                  np.post_id
+                , lsh.sample_time
+                , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
+                , coalesce(lsh.cumulative_expected_upvotes, 0) as cumulative_expected_upvotes
+            from newest_posts np
+            join latest_stats_history lsh
+            where np.post_id = lsh.post_id
+        )
+        select
+              post_id
+            , sample_time
+            , cumulative_upvotes
+            , cumulative_expected_upvotes
+        from with_cumulative_expected_upvotes
+        order by cumulative_upvotes desc
+        ",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("Failed to get newest stories");
+
+    Ok(newest_stories)
+}
+
+// TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
+async fn get_expected_upvotes_at_tick(pool: &SqlitePool, post_id: i32) -> Result<f32> {
+    let expected_upvotes_by_post: f32 = sqlx::query_scalar(
+        "
+        select ubr.avg_upvotes
+        from rank_history rh
+        join upvotes_by_rank ubr
+        on rh.rank_top = ubr.rank_top
+        where sample_time = (
+            select max(sample_time)
+            from rank_history
+        )
+        and post_id = ?
+        ",
+    )
+    .bind(post_id)
+    .fetch_one(pool)
+    .await
+    .expect("Failed to get expected upvotes at current tick");
+
+    Ok(expected_upvotes_by_post)
 }
 
 async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithRanks>> {
@@ -150,88 +208,8 @@ async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithR
         .fetch_all(pool)
         .await
         .expect("Failed to get posts in pool");
-        return Ok(init_ranks)
+        return Ok(init_ranks);
     }
 
     Ok(ranks)
 }
-
-async fn get_newest_posts_with_stats(pool: &SqlitePool) -> Result<Vec<PostWithStats>> {
-    let newest_stories = sqlx::query_as::<_, PostWithStats>(
-        "
-        with newest_posts as (
-            select
-                post_id
-                , created_at
-            from post
-            order by created_at desc
-            limit 1500
-        )
-        , vote_counts as (
-            select
-                np.post_id
-                , np.created_at as submission_time
-                , count(*) as upvote_count
-            from newest_posts np
-            join vote_event ve
-            on np.post_id = ve.post_id
-            where ve.vote = 1
-            group by np.post_id
-        )
-        select *
-        from vote_counts
-        order by upvote_count desc
-        ",
-    )
-    .fetch_all(pool)
-    .await
-    .expect("Failed to get newest stories");
-
-    Ok(newest_stories)
-}
-
-async fn get_avg_upvotes_by_rank(pool: &SqlitePool) -> Result<Vec<UpvotesByRank>> {
-    let upvotes_by_rank = sqlx::query_as::<_, UpvotesByRank>(
-        "
-        with upvotes_in_time_window as (
-          select
-            post_id
-            , sample_time
-            , upvote_count - lag(upvote_count) over (
-                partition by post_id
-                order by sample_time
-            ) as upvotes_in_time_window
-          from stats_history
-        )
-        , upvote_window as (
-          select
-            post_id
-            , sample_time
-            , coalesce(upvotes_in_time_window, 0) as upvotes_in_time_window
-          from upvotes_in_time_window
-        )
-        , ranks_with_upvote_count as (
-          select
-            rh.post_id
-            , rh.sample_time
-            , rh.rank_top
-            , uw.upvotes_in_time_window
-          from rank_history rh
-          join upvote_window uw
-          on rh.post_id = uw.post_id
-          and rh.sample_time = uw.sample_time
-        )
-        select
-          rank_top
-          , avg(upvotes_in_time_window) as avg_upvotes
-        from ranks_with_upvote_count
-        group by rank_top
-        ",
-    )
-    .fetch_all(pool)
-    .await
-    .expect("Failed to get upvotes by rank");
-
-    Ok(upvotes_by_rank)
-}
-
