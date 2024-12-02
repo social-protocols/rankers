@@ -27,43 +27,53 @@ create table if not exists rank_history (
   , rank_top    integer
 ) strict;
 
-create table upvotes_at_rank_history (
-    sample_time integer not null
-  , rank_top    integer not null
-  , upvotes     real not null
-) strict;
-
-create view if not exists upvotes_by_rank as
-with upvotes_in_time_window as (
+create view if not exists upvotes_at_rank_history as
+with upvotes_at_sample_time as (
   select
       post_id
     , sample_time
-    , cumulative_upvotes - lag(cumulative_upvotes) over (
+    , coalesce(
+      cumulative_upvotes - lag(cumulative_upvotes) over (
         partition by post_id
         order by sample_time
-    ) as upvotes_in_time_window
+      ),
+      0
+    ) as upvotes_at_sample_time
   from stats_history
 )
-, upvote_window as (
+, sitewide_upvotes_at_tick as (
   select
-      post_id
-    , sample_time
-    , coalesce(upvotes_in_time_window, 0) as upvotes_in_time_window
-  from upvotes_in_time_window
+      sample_time
+    , sum(upvotes_at_sample_time) as sitewide_upvotes
+  from upvotes_at_sample_time
+  group by sample_time
 )
-, ranks_with_upvote_count as (
+, with_sitewide as (
   select
       rh.post_id
     , rh.sample_time
     , rh.rank_top
-    , uw.upvotes_in_time_window
+    , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
+    , suat.sitewide_upvotes
   from rank_history rh
-  join upvote_window uw
-  on rh.post_id = uw.post_id
-  and rh.sample_time = uw.sample_time
+  left outer join upvotes_at_sample_time uast
+  on rh.post_id = uast.post_id
+  and rh.sample_time = uast.sample_time
+  join sitewide_upvotes_at_tick suat
+  on rh.sample_time = suat.sample_time
 )
 select
+      post_id
+    , sample_time
+    , rank_top
+    , upvotes
+    , sitewide_upvotes
+    , coalesce(cast(upvotes as real) / sitewide_upvotes, 0) as upvotes_share
+from with_sitewide;
+
+create view if not exists upvote_share as
+select
     rank_top
-  , avg(upvotes_in_time_window) as avg_upvotes
-from ranks_with_upvote_count
+  , avg(upvotes_share) as upvote_share_at_rank
+from upvotes_at_rank_history
 group by rank_top;

@@ -85,11 +85,10 @@ async fn insert_stats_from_current_tick(
     sample_time: i64,
 ) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
     let stats: Vec<StatsObservation> = get_posts_with_stats_for_current_tick(&pool).await.unwrap();
+    let sitewide_upvotes = get_sitewide_upvotes(&pool).await.unwrap();
 
     for s in &stats {
-        let newly_observed_expected_upvotes = get_expected_upvotes_at_tick(&pool, s.post_id)
-            .await
-            .unwrap();
+        let expected_upvote_share = get_expected_upvote_share(&pool, s.post_id).await.unwrap();
         let current_upvote_count = get_current_upvote_count(&pool, s.post_id).await.unwrap();
         if let Err(_) = query(
             "
@@ -104,7 +103,7 @@ async fn insert_stats_from_current_tick(
         .bind(s.post_id)
         .bind(sample_time)
         .bind(current_upvote_count)
-        .bind(s.cumulative_expected_upvotes + newly_observed_expected_upvotes)
+        .bind(s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32))
         .execute(pool)
         .await
         {
@@ -208,14 +207,45 @@ async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<
     Ok(newest_stories)
 }
 
+async fn get_sitewide_upvotes(pool: &SqlitePool) -> Result<i32> {
+    let sitewide_upvotes: i32 = sqlx::query_scalar(
+        "
+        with upvotes_at_sample_time as (
+            select
+                post_id
+                , sample_time
+                , coalesce(
+                    cumulative_upvotes - lag(cumulative_upvotes) over (
+                        partition by post_id
+                        order by sample_time
+                    ),
+                    0
+                ) as upvotes_at_sample_time
+            from stats_history
+        )
+        select sum(upvotes_at_sample_time) as sitewide_upvotes
+        from upvotes_at_sample_time
+        where sample_time = (
+            select max(sample_time)
+            from upvotes_at_sample_time
+        )
+        ",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("Failed to get sitewide upvotes at current tick");
+
+    Ok(sitewide_upvotes)
+}
+
 // TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
-async fn get_expected_upvotes_at_tick(pool: &SqlitePool, post_id: i32) -> Result<f32> {
+async fn get_expected_upvote_share(pool: &SqlitePool, post_id: i32) -> Result<f32> {
     let expected_upvotes_by_post: f32 = sqlx::query_scalar(
         "
-        select ubr.avg_upvotes
+        select us.upvote_share_at_rank
         from rank_history rh
-        left outer join upvotes_by_rank ubr
-        on rh.rank_top = ubr.rank_top
+        left outer join upvote_share us
+        on rh.rank_top = us.rank_top
         where sample_time = (
             select max(sample_time)
             from rank_history

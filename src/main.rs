@@ -19,8 +19,7 @@ async fn main() -> Result<()> {
         .await
         .expect("Failed to create database pool");
 
-    let shared_pool = Arc::new(pool.clone());
-    scheduler::start_scheduler(Arc::clone(&shared_pool))
+    scheduler::start_scheduler(Arc::clone(&Arc::new(pool.clone())))
         .await
         .expect("Couldn't setup scheduler");
 
