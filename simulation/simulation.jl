@@ -19,7 +19,7 @@ post_id_buffer = Int[]
 
 function create_post!(buf::Array{Int}, host::String, endpoint::String, comment_probability::Float64)
     post_id = isempty(buf) ? 1 : maximum(buf) + 1
-    parent_id = rand() < comment_probability ? nothing : rand(buf)
+    parent_id = rand() < comment_probability && isempty(buf) ? nothing : rand(buf)
 
     post = Dict(
         "post_id" => post_id,
