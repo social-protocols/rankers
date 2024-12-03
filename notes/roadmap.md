@@ -1,0 +1,41 @@
+# Roadmap
+
+## General
+
+- [ ] remove seed script once not needed anymore
+- [ ] create readme
+- [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
+- [ ] refactor model (get rid of unnecessary intermediate structs)
+- [ ] once data model is more stable, setup dev workflow with cargo watch
+- [ ] so far only happy case programming -> implement proper error handling
+- [ ] setup logging
+- [ ] create first client library
+- [ ] setup configuration options -> if only certain rankings are required, some tasks don't need to be added to the scheduler (e.g., QN rankings require periodical sampling of stats)
+
+## Rankings
+
+- [ ] come up with ranking endpoints that clearly distinguish between comment ranking and global ranking
+- [ ] `newest` ranking (trivial)
+- [ ] Reddit `hot` metric
+- [ ] `global_brain` scoring
+
+## API
+
+- [ ] register posts after receiving first vote instead of having separate `create_post` endpoint -> this means that `submission_time` (and potentially some other information about the post) must be in the vote event
+- [ ] `get_ranking/:method` endpoint (i.e., one endpoint for all rankings)
+- [ ] `get_score` endpoint (requiring: `post_id`, `method`)
+- [ ] sketch out documentation and guides
+
+## CI/CD
+
+- [ ] setup tests
+- [ ] setup CI pipeline
+
+## Deployment
+
+- [ ] create docker image
+- [ ] create a flake output for build
+
+## Simulation
+
+- [ ] provide different probability models to simulate realistic vote streams (for different use cases / ranking methods)
