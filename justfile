@@ -5,16 +5,6 @@ _default:
 dev:
   process-compose up -t=false
 
-run:
-  cargo run
-
-reset:
-  sqlx database reset
-
-run-reset:
-  sqlx database reset
-  cargo run
-
 migrate:
   sqlx migrate run
 
