@@ -2,6 +2,9 @@
 _default:
   @just --list --unsorted
 
+dev:
+  process-compose up -t=false
+
 run:
   cargo run
 

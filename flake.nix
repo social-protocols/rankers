@@ -25,7 +25,7 @@
           entr
           just
           curl
-          # process-compose
+          process-compose
           sqlite-interactive
           litecli
           sqlx-cli

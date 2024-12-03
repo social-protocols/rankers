@@ -4,6 +4,10 @@ use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
 use sqlx::{query, sqlite::SqlitePool};
 
+pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
+    Ok(axum::http::StatusCode::OK)
+}
+
 pub async fn create_post(
     State(pool): State<SqlitePool>,
     Json(payload): Json<model::NewsAggregatorPost>,

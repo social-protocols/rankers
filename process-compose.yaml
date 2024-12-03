@@ -1,0 +1,21 @@
+# TODO: include check health script to wait for http server availability before simulation is started
+
+version: "0.5"
+
+processes:
+  service:
+    command: "cargo run"
+    availability:
+      restart: "always"
+
+  service_available:
+    command: "./scripts/check_availability.sh"
+
+  simulation:
+    command: "cd simulation && julia --project simulation.jl"
+    availability:
+      restart: "always"
+    depends_on:
+      service_available:
+        condition: process_completed
+
