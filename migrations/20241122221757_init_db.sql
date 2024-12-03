@@ -17,7 +17,7 @@ create table if not exists stats_history (
   , sample_time                 integer not null
   , cumulative_upvotes          integer not null
   , cumulative_expected_upvotes real    not null
-  -- , upvote_rate real not null -- TODO
+  , upvote_rate                 real    not null
 ) strict;
 
 -- TODO: devise scheme to add other ranks if there are several pages

@@ -44,6 +44,7 @@ pub struct StatsObservation {
     pub sample_time: i64,
     pub cumulative_upvotes: i32,
     pub cumulative_expected_upvotes: f32,
+    pub upvote_rate: f32,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]

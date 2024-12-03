@@ -10,7 +10,7 @@
 // upvotes at rank combination at current tick
 // - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 
-use crate::model::{PostWithRanks, StatsObservation};
+use crate::model::{NewsAggregatorPost, PostWithRanks, StatsObservation};
 use anyhow::Result;
 use axum::response::IntoResponse;
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
@@ -70,16 +70,23 @@ pub async fn sample_ranks(
 
     let _ = insert_stats_from_current_tick(&mut tx, sample_time).await;
 
-    // TODO: eventually, rank by upvote rate
-    let ranks = get_ranks_from_previous_tick(&mut tx).await.unwrap();
-    let new_ranks: Vec<PostWithRanks> = ranks
+    let mut current_stats_for_ranking = get_posts_with_stats_for_current_tick(&mut tx)
+        .await
+        .unwrap();
+
+    current_stats_for_ranking
+        .sort_by(|a, b| a.upvote_rate.partial_cmp(&b.upvote_rate).unwrap().reverse());
+
+    let new_ranks: Vec<PostWithRanks> = current_stats_for_ranking
         .iter()
-        .map(|ranked_post| PostWithRanks {
-            post_id: ranked_post.post_id,
+        .enumerate()
+        .map(|(i, stat)| PostWithRanks {
+            post_id: stat.post_id,
             sample_time,
-            rank_top: ranked_post.rank_top,
+            rank_top: i as i32 + 1,
         })
         .collect();
+
     insert_ranks_from_current_tick(&mut tx, &new_ranks).await;
 
     tx.commit()
@@ -103,6 +110,27 @@ async fn insert_stats_from_current_tick(
             .await
             .unwrap();
         let current_upvote_count = get_current_upvote_count(&mut *tx, s.post_id).await.unwrap();
+        let current_expected_upvote_count =
+            s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
+        let post: NewsAggregatorPost = sqlx::query_as(
+            "
+            select *
+            from post
+            where post_id = ?
+            ",
+        )
+        .bind(s.post_id)
+        .fetch_one(&mut **tx)
+        .await
+        .expect("Failed to get current post");
+        let age_hours = (sample_time - post.created_at) as f32 / 60.0 / 60.0;
+
+        let upvote_rate = calc_score(
+            age_hours,
+            current_upvote_count,
+            current_expected_upvote_count,
+        );
+
         let _result = query(
             "
             insert into stats_history (
@@ -110,19 +138,33 @@ async fn insert_stats_from_current_tick(
                 , sample_time
                 , cumulative_upvotes
                 , cumulative_expected_upvotes
-            ) values (?, ?, ?, ?)
+                , upvote_rate
+            ) values (?, ?, ?, ?, ?)
             ",
         )
         .bind(s.post_id)
         .bind(sample_time)
         .bind(current_upvote_count)
-        .bind(s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32))
+        .bind(current_expected_upvote_count)
+        .bind(upvote_rate)
         .execute(&mut **tx)
         .await
         .expect("Failed to insert new stats history entry");
     }
 
     Ok(axum::http::StatusCode::OK)
+}
+
+fn calc_score(age: f32, upvotes: i32, expected_upvotes: f32) -> f32 {
+    // TODO: sane default for 0.0 expected upvotes
+    let estimated_upvote_rate: f32 = if expected_upvotes != 0.0 {
+        upvotes as f32 / expected_upvotes
+    } else {
+        0.0
+    };
+    let numerator = (age * estimated_upvote_rate).powf(0.8);
+    let denominator = (age + 2.0).powf(1.8);
+    numerator / denominator
 }
 
 async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<i32> {
@@ -198,6 +240,7 @@ async fn get_posts_with_stats_for_current_tick(
                 , lsh.sample_time
                 , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
                 , coalesce(lsh.cumulative_expected_upvotes, 0.0) as cumulative_expected_upvotes
+                , coalesce(lsh.upvote_rate, 0.0) as upvote_rate
             from newest_posts np
             left outer join latest_stats_history lsh
             on np.post_id = lsh.post_id
@@ -207,6 +250,7 @@ async fn get_posts_with_stats_for_current_tick(
             , sample_time
             , cumulative_upvotes
             , cumulative_expected_upvotes
+            , upvote_rate
         from with_cumulative_expected_upvotes
         order by cumulative_upvotes desc
         ",
@@ -260,13 +304,13 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i3
         where post_id = ?
         ",
     )
-        .bind(post_id)
-        .fetch_one(&mut **tx)
-        .await
-        .expect("Failed to determine previous ranking status");
+    .bind(post_id)
+    .fetch_one(&mut **tx)
+    .await
+    .expect("Failed to determine previous ranking status");
 
     if previously_unranked == 1 {
-        return Ok(0.0)
+        return Ok(0.0);
     }
 
     let expected_upvotes_by_post: f32 = sqlx::query_scalar(
@@ -288,29 +332,4 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i3
     .expect("Failed to get expected upvotes at current tick");
 
     Ok(expected_upvotes_by_post)
-}
-
-// TODO: remove once ranking by upvote rate works
-async fn get_ranks_from_previous_tick(
-    tx: &mut Transaction<'_, Sqlite>,
-) -> Result<Vec<PostWithRanks>> {
-    let ranks: Vec<PostWithRanks> = sqlx::query_as(
-        "
-        select
-              post_id
-            , sample_time
-            , rank_top
-        from rank_history
-        where rank_top <= 90
-        and sample_time = (
-          select max(sample_time)
-          from rank_history
-        )
-        ",
-    )
-    .fetch_all(&mut **tx)
-    .await
-    .expect("Failed to get ranks for current tick");
-
-    Ok(ranks)
 }
