@@ -253,6 +253,22 @@ async fn get_sitewide_upvotes(tx: &mut Transaction<'_, Sqlite>) -> Result<i32> {
 
 // TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
 async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<f32> {
+    let previously_unranked: i32 = sqlx::query_scalar(
+        "
+        select count(*) = 0
+        from rank_history
+        where post_id = ?
+        ",
+    )
+        .bind(post_id)
+        .fetch_one(&mut **tx)
+        .await
+        .expect("Failed to determine previous ranking status");
+
+    if previously_unranked == 1 {
+        return Ok(0.0)
+    }
+
     let expected_upvotes_by_post: f32 = sqlx::query_scalar(
         "
         select us.upvote_share_at_rank
