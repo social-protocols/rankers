@@ -2,7 +2,6 @@
 
 ## General
 
-- [ ] remove seed script once not needed anymore
 - [ ] create readme
 - [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
 - [ ] refactor model (get rid of unnecessary intermediate structs)

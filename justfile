@@ -21,9 +21,6 @@ migrate:
 db:
   litecli $DATABASE_PATH
 
-seed:
-  ./scripts/seed.sh
-
 # TODO: configure in editor config (on save)
 format:
   cargo fmt
