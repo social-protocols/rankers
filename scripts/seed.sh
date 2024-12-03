@@ -55,7 +55,7 @@ generate_vote_event() {
   "vote_event_id": $vote_event_id,
   "post_id": $post_id,
   "vote": $vote,
-  "vote_event_time": $timestamp
+  "created_at": $timestamp
 }
 EOF
 )

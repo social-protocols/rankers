@@ -48,7 +48,7 @@ function send_vote_event!(vote_event_buf::Array{Int}, post_buf::Array{Int}, host
         "vote_event_id" => vote_event_id,
         "post_id" => post_id,
         "vote" => 1,
-        "vote_event_time" => Int(floor(Dates.time())),
+        "created_at" => Int(floor(Dates.time())),
     )
     headers = Dict("Content-Type" => "application/json")
 

@@ -10,7 +10,7 @@
 // upvotes at rank combination at current tick
 // - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 
-use crate::model::{NewsAggregatorPost, PostWithRanks, StatsObservation};
+use crate::model::{Post, PostWithRanks, StatsObservation};
 use anyhow::Result;
 use axum::response::IntoResponse;
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
@@ -112,7 +112,7 @@ async fn insert_stats_from_current_tick(
         let current_upvote_count = get_current_upvote_count(&mut *tx, s.post_id).await.unwrap();
         let current_expected_upvote_count =
             s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
-        let post: NewsAggregatorPost = sqlx::query_as(
+        let post: Post = sqlx::query_as(
             "
             select *
             from post

@@ -1,8 +1,10 @@
 use crate::error::AppError;
 use crate::model;
+use crate::model::Score;
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
 use sqlx::{query, sqlite::SqlitePool};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
     Ok(axum::http::StatusCode::OK)
@@ -10,7 +12,7 @@ pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
 
 pub async fn create_post(
     State(pool): State<SqlitePool>,
-    Json(payload): Json<model::NewsAggregatorPost>,
+    Json(payload): Json<model::Post>,
 ) -> impl IntoResponse {
     if let Err(_) = query(
         "
@@ -21,7 +23,7 @@ pub async fn create_post(
         ) values (?, ?, ?)
         ",
     )
-    .bind(&payload.post_id)
+    .bind(payload.post_id)
     .bind(payload.parent_id)
     .bind(payload.created_at)
     .execute(&pool)
@@ -43,14 +45,14 @@ pub async fn send_vote_event(
               vote_event_id
             , post_id
             , vote
-            , vote_event_time
+            , created_at
         ) values (?, ?, ?, ?)
         ",
     )
     .bind(&payload.vote_event_id)
     .bind(payload.post_id)
     .bind(payload.vote)
-    .bind(payload.vote_event_time)
+    .bind(payload.created_at)
     .execute(&pool)
     .await
     {
@@ -60,46 +62,52 @@ pub async fn send_vote_event(
     Ok(axum::http::StatusCode::OK)
 }
 
+// TODO: handle unvotes and revotes
 pub async fn get_hacker_news_ranking(
     State(pool): State<SqlitePool>,
-) -> Result<Json<Vec<model::HNScoredPost>>, AppError> {
-    let rows: Vec<model::HNPost> = sqlx::query_as::<_, model::HNPost>(
+) -> Result<Json<Vec<model::ScoredPost>>, AppError> {
+    let sample_time: i64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Couldn't get current time to record sample time")
+        .as_millis() as i64;
+
+    let rows: Vec<model::HnStatsObservation> = sqlx::query_as::<_, model::HnStatsObservation>(
         "
-        with upvote_counts as (
+        with newest_posts as (
+            select *
+            from post
+            order by created_at desc
+            limit 1500
+        )
+        , upvote_counts as (
           select
-            post_id
+              post_id
             , count(*) as upvotes
           from vote_event
           where vote = 1
           group by post_id
         )
-        , age_hours as (
-          select
-            p.post_id
-            , (unixepoch('subsec') * 1000 - p.created_at) / 1000 / 60 / 60 as age_hours
-          from post p
-        )
         select
-          p.post_id as post_id
-          , uc.upvotes as upvotes
-          , ah.age_hours as age_hours
-        from post p
+            np.post_id
+          , np.created_at as submission_time
+          , ? as sample_time
+          , uc.upvotes
+        from newest_posts np
         join upvote_counts uc
-        on p.post_id = uc.post_id
-        join age_hours ah
-        on p.post_id = ah.post_id
-        where p.parent_id is null
-        order by p.created_at desc
-        limit 1500
+        on np.post_id = uc.post_id
         ",
     )
+    .bind(sample_time)
     .fetch_all(&pool)
     .await
     .expect("Failed to fetch row");
 
-    let scored_posts: Vec<model::HNScoredPost> = rows
+    let scored_posts: Vec<model::ScoredPost> = rows
         .into_iter()
-        .map(model::HNScoredPost::from_hn_post)
+        .map(|elem| model::ScoredPost {
+            post_id: elem.post_id,
+            score: elem.score(),
+        })
         .collect();
 
     Ok(Json(scored_posts))

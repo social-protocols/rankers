@@ -5,37 +5,54 @@ pub struct VoteEvent {
     pub vote_event_id: i32,
     pub post_id: i32,
     pub vote: i32,
-    pub vote_event_time: i64,
+    pub created_at: i64,
 }
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
-pub struct NewsAggregatorPost {
+pub struct Post {
     pub post_id: i32,
     pub parent_id: Option<i32>,
     pub created_at: i64,
 }
 
-#[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
-pub struct HNPost {
-    pub post_id: i32,
-    pub upvotes: i32,
-    pub age_hours: f32,
+pub trait Score {
+    fn score(&self) -> f32;
+}
+
+pub trait Observation {
+    fn sample_time(&self) -> i64;
 }
 
 #[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
-pub struct HNScoredPost {
+pub struct ScoredPost {
     pub post_id: i32,
     pub score: f32,
 }
 
-impl HNScoredPost {
-    pub fn from_hn_post(post: HNPost) -> HNScoredPost {
-        HNScoredPost {
-            post_id: post.post_id,
-            score: (post.upvotes as f32).powf(0.8) / (post.age_hours + 2.0).powf(1.8),
-        }
+// Hacker News
+
+#[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
+pub struct HnStatsObservation {
+    pub post_id: i32,
+    pub submission_time: i64,
+    pub sample_time: i64,
+    pub upvotes: i32,
+}
+
+impl Score for HnStatsObservation {
+    fn score(&self) -> f32 {
+        let age_hours = (self.sample_time - self.submission_time) as f32 / 60.0 / 60.0;
+        (self.upvotes as f32).powf(0.8) / (age_hours + 2.0).powf(1.8)
     }
 }
+
+impl Observation for HnStatsObservation {
+    fn sample_time(&self) -> i64 {
+        self.sample_time
+    }
+}
+
+// Quality News
 
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug)]
 pub struct StatsObservation {

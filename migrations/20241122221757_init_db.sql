@@ -5,10 +5,10 @@ create table if not exists post (
 ) strict;
 
 create table if not exists vote_event (
-    vote_event_id   integer not null primary key autoincrement
-  , post_id         integer not null references post(post_id)
-  , vote            integer not null
-  , vote_event_time integer not null default (unixepoch('subsec') * 1000)
+    vote_event_id integer not null primary key autoincrement
+  , post_id       integer not null references post(post_id)
+  , vote          integer not null
+  , created_at    integer not null default (unixepoch('subsec') * 1000)
 ) strict;
 
 create table if not exists stats_history (
