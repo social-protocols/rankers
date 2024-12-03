@@ -19,10 +19,6 @@ pub trait Score {
     fn score(&self) -> f32;
 }
 
-pub trait Observation {
-    fn sample_time(&self) -> i64;
-}
-
 #[derive(sqlx::FromRow, Debug, Serialize, Deserialize)]
 pub struct ScoredPost {
     pub post_id: i32,
@@ -43,12 +39,6 @@ impl Score for HnStatsObservation {
     fn score(&self) -> f32 {
         let age_hours = (self.sample_time - self.submission_time) as f32 / 60.0 / 60.0;
         (self.upvotes as f32).powf(0.8) / (age_hours + 2.0).powf(1.8)
-    }
-}
-
-impl Observation for HnStatsObservation {
-    fn sample_time(&self) -> i64 {
-        self.sample_time
     }
 }
 

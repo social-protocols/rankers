@@ -10,6 +10,7 @@ mod http_server;
 mod model;
 mod scheduler;
 mod upvote_rate;
+mod util;
 
 #[tokio::main]
 async fn main() -> Result<()> {

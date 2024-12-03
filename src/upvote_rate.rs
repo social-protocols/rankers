@@ -11,10 +11,10 @@
 // - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 
 use crate::model::{Post, PostWithRanks, StatsObservation};
+use crate::util::now_millis;
 use anyhow::Result;
 use axum::response::IntoResponse;
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn sample_ranks(
     pool: &SqlitePool,
@@ -61,10 +61,7 @@ pub async fn sample_ranks(
         .expect("Failed to get posts in pool");
     }
 
-    let sample_time: i64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Couldn't get current time to record sample time")
-        .as_millis() as i64;
+    let sample_time = now_millis();
 
     println!("Sampling posts at: {:?}", sample_time);
 
@@ -312,7 +309,7 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i3
         return Ok(0.0);
     }
 
-    let expected_upvotes_by_post: f32 = sqlx::query_scalar(
+    let expected_upvotes: f32 = sqlx::query_scalar(
         "
         select us.upvote_share_at_rank
         from rank_history rh
@@ -330,5 +327,5 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i3
     .await
     .expect("Failed to get expected upvotes at current tick");
 
-    Ok(expected_upvotes_by_post)
+    Ok(expected_upvotes)
 }

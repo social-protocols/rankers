@@ -1,10 +1,10 @@
 use crate::error::AppError;
 use crate::model;
 use crate::model::Score;
+use crate::util::now_millis;
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
 use sqlx::{query, sqlite::SqlitePool};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
     Ok(axum::http::StatusCode::OK)
@@ -66,10 +66,7 @@ pub async fn send_vote_event(
 pub async fn get_hacker_news_ranking(
     State(pool): State<SqlitePool>,
 ) -> Result<Json<Vec<model::ScoredPost>>, AppError> {
-    let sample_time: i64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Couldn't get current time to record sample time")
-        .as_millis() as i64;
+    let sample_time = now_millis();
 
     let rows: Vec<model::HnStatsObservation> = sqlx::query_as::<_, model::HnStatsObservation>(
         "
