@@ -11,18 +11,6 @@ TOTAL_VOTE_EVENTS=500
 
 generate_post() {
     local post_id=$1
-    local content_options=(
-        "Hello, world!"
-        "Just another day in paradise"
-        "Coding is fun!"
-        "Learning something new today"
-        "Check out this cool thing I found"
-        "Random thoughts..."
-        "Weekend plans?"
-        "Music recommendation time"
-        "Feeling grateful"
-        "Deep philosophical musing"
-    )
 
     # Randomly decide if this is a top-level or reply post
     local parent_id="null"
@@ -32,12 +20,10 @@ generate_post() {
     fi
 
     local timestamp=$(date +%s%3N)
-    local content=${content_options[$((RANDOM % ${#content_options[@]}))]}
     local post_json=$(cat <<EOF
 {
   "post_id": $post_id,
   "parent_id": $parent_id,
-  "content": "$content",
   "created_at": $timestamp
 }
 EOF

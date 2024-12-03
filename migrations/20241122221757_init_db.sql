@@ -1,7 +1,6 @@
 create table if not exists post (
     post_id    integer not null primary key autoincrement
   , parent_id  integer          references post(post_id)
-  , content    text    not null
   , created_at integer not null default (unixepoch('subsec') * 1000)
 ) strict;
 

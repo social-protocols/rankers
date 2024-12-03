@@ -13,14 +13,12 @@ pub async fn create_post(
         insert into post (
               post_id
             , parent_id
-            , content
             , created_at
-        ) values (?, ?, ?, ?)
+        ) values (?, ?, ?)
         ",
     )
     .bind(&payload.post_id)
     .bind(payload.parent_id)
-    .bind(payload.content)
     .bind(payload.created_at)
     .execute(&pool)
     .await

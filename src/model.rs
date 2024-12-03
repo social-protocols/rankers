@@ -12,7 +12,6 @@ pub struct VoteEvent {
 pub struct NewsAggregatorPost {
     pub post_id: i32,
     pub parent_id: Option<i32>,
-    pub content: String,
     pub created_at: i64,
 }
 

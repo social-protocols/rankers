@@ -25,7 +25,6 @@ function create_post!(post_buf::Array{Int}, host::String, endpoint::String, comm
     post = Dict(
         "post_id" => post_id,
         "parent_id" => parent_id,
-        "content" => "Halo i bims, lol",
         "created_at" => Int(floor(Dates.time())),
     )
     headers = Dict("Content-Type" => "application/json")
