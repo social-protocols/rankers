@@ -74,8 +74,7 @@ pub async fn sample_ranks(
         .await
         .unwrap();
 
-    current_stats_for_ranking
-        .sort_by(|a, b| a.upvote_rate.partial_cmp(&b.upvote_rate).unwrap().reverse());
+    current_stats_for_ranking.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap().reverse());
 
     let new_ranks: Vec<PostWithRanks> = current_stats_for_ranking
         .iter()
@@ -125,7 +124,7 @@ async fn insert_stats_from_current_tick(
         .expect("Failed to get current post");
         let age_hours = (sample_time - post.created_at) as f32 / 60.0 / 60.0;
 
-        let upvote_rate = calc_score(
+        let score = calc_score(
             age_hours,
             current_upvote_count,
             current_expected_upvote_count,
@@ -138,7 +137,7 @@ async fn insert_stats_from_current_tick(
                 , sample_time
                 , cumulative_upvotes
                 , cumulative_expected_upvotes
-                , upvote_rate
+                , score
             ) values (?, ?, ?, ?, ?)
             ",
         )
@@ -146,7 +145,7 @@ async fn insert_stats_from_current_tick(
         .bind(sample_time)
         .bind(current_upvote_count)
         .bind(current_expected_upvote_count)
-        .bind(upvote_rate)
+        .bind(score)
         .execute(&mut **tx)
         .await
         .expect("Failed to insert new stats history entry");
@@ -240,7 +239,7 @@ async fn get_posts_with_stats_for_current_tick(
                 , lsh.sample_time
                 , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
                 , coalesce(lsh.cumulative_expected_upvotes, 0.0) as cumulative_expected_upvotes
-                , coalesce(lsh.upvote_rate, 0.0) as upvote_rate
+                , coalesce(lsh.score, 0.0) as score
             from newest_posts np
             left outer join latest_stats_history lsh
             on np.post_id = lsh.post_id
@@ -250,7 +249,7 @@ async fn get_posts_with_stats_for_current_tick(
             , sample_time
             , cumulative_upvotes
             , cumulative_expected_upvotes
-            , upvote_rate
+            , score
         from with_cumulative_expected_upvotes
         order by cumulative_upvotes desc
         ",

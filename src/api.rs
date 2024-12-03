@@ -49,7 +49,7 @@ pub async fn send_vote_event(
         ) values (?, ?, ?, ?)
         ",
     )
-    .bind(&payload.vote_event_id)
+    .bind(payload.vote_event_id)
     .bind(payload.post_id)
     .bind(payload.vote)
     .bind(payload.created_at)
