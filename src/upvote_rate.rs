@@ -13,7 +13,7 @@
 use crate::model::{PostWithRanks, StatsObservation};
 use anyhow::Result;
 use axum::response::IntoResponse;
-use sqlx::{query, sqlite::SqlitePool};
+use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub async fn sample_ranks(
@@ -21,8 +21,13 @@ pub async fn sample_ranks(
 ) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
     // TODO: come up with a better initialization logic
 
+    let mut tx = pool
+        .begin()
+        .await
+        .expect("Failed to create transaction for rank sampling");
+
     let n_posts: i32 = sqlx::query_scalar("select count(*) from post")
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .expect("Couldn't get post count");
     if n_posts == 0 {
@@ -31,7 +36,7 @@ pub async fn sample_ranks(
     }
 
     let rank_history_size: i32 = sqlx::query_scalar("select count(*) from rank_history")
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .expect("Couldn't get rank history size");
     if rank_history_size == 0 {
@@ -51,7 +56,7 @@ pub async fn sample_ranks(
             returning *
             ",
         )
-        .fetch_all(pool)
+        .fetch_all(&mut *tx)
         .await
         .expect("Failed to get posts in pool");
     }
@@ -63,10 +68,10 @@ pub async fn sample_ranks(
 
     println!("Sampling posts at: {:?}", sample_time);
 
-    let _ = insert_stats_from_current_tick(&pool, sample_time).await;
+    let _ = insert_stats_from_current_tick(&mut tx, sample_time).await;
 
     // TODO: eventually, rank by upvote rate
-    let ranks = get_ranks_from_previous_tick(&pool).await.unwrap();
+    let ranks = get_ranks_from_previous_tick(&mut tx).await.unwrap();
     let new_ranks: Vec<PostWithRanks> = ranks
         .iter()
         .map(|ranked_post| PostWithRanks {
@@ -75,22 +80,30 @@ pub async fn sample_ranks(
             rank_top: ranked_post.rank_top,
         })
         .collect();
-    insert_ranks_from_current_tick(&pool, &new_ranks).await;
+    insert_ranks_from_current_tick(&mut tx, &new_ranks).await;
+
+    tx.commit()
+        .await
+        .expect("Failed to commit transaction for rank sampling");
 
     Ok(axum::http::StatusCode::OK)
 }
 
 async fn insert_stats_from_current_tick(
-    pool: &SqlitePool,
+    tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
 ) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
-    let stats: Vec<StatsObservation> = get_posts_with_stats_for_current_tick(&pool).await.unwrap();
-    let sitewide_upvotes = get_sitewide_upvotes(&pool).await.unwrap();
+    let stats: Vec<StatsObservation> = get_posts_with_stats_for_current_tick(&mut *tx)
+        .await
+        .unwrap();
+    let sitewide_upvotes = get_sitewide_upvotes(&mut *tx).await.unwrap();
 
     for s in &stats {
-        let expected_upvote_share = get_expected_upvote_share(&pool, s.post_id).await.unwrap();
-        let current_upvote_count = get_current_upvote_count(&pool, s.post_id).await.unwrap();
-        if let Err(_) = query(
+        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.post_id)
+            .await
+            .unwrap();
+        let current_upvote_count = get_current_upvote_count(&mut *tx, s.post_id).await.unwrap();
+        let _result = query(
             "
             insert into stats_history (
                   post_id
@@ -104,17 +117,15 @@ async fn insert_stats_from_current_tick(
         .bind(sample_time)
         .bind(current_upvote_count)
         .bind(s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32))
-        .execute(pool)
+        .execute(&mut **tx)
         .await
-        {
-            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        .expect("Failed to insert new stats history entry");
     }
 
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn get_current_upvote_count(pool: &SqlitePool, post_id: i32) -> Result<i32> {
+async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<i32> {
     let upvote_count: i32 = sqlx::query_scalar(
         "
         select count(*)
@@ -126,7 +137,7 @@ async fn get_current_upvote_count(pool: &SqlitePool, post_id: i32) -> Result<i32
         ",
     )
     .bind(post_id)
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     .expect("Failed to get current vote count");
 
@@ -134,7 +145,7 @@ async fn get_current_upvote_count(pool: &SqlitePool, post_id: i32) -> Result<i32
 }
 
 async fn insert_ranks_from_current_tick(
-    pool: &SqlitePool,
+    tx: &mut Transaction<'_, Sqlite>,
     ranks: &Vec<PostWithRanks>,
 ) -> impl IntoResponse {
     for r in ranks {
@@ -150,7 +161,7 @@ async fn insert_ranks_from_current_tick(
         .bind(r.post_id)
         .bind(r.sample_time)
         .bind(r.rank_top)
-        .execute(pool)
+        .execute(&mut **tx)
         .await
         {
             return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
@@ -160,7 +171,9 @@ async fn insert_ranks_from_current_tick(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<StatsObservation>> {
+async fn get_posts_with_stats_for_current_tick(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<Vec<StatsObservation>> {
     let newest_stories = sqlx::query_as::<_, StatsObservation>(
         "
         with newest_posts as (
@@ -198,7 +211,7 @@ async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<
         order by cumulative_upvotes desc
         ",
     )
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await
     .expect("Failed to get newest stories");
 
@@ -207,7 +220,7 @@ async fn get_posts_with_stats_for_current_tick(pool: &SqlitePool) -> Result<Vec<
     Ok(newest_stories)
 }
 
-async fn get_sitewide_upvotes(pool: &SqlitePool) -> Result<i32> {
+async fn get_sitewide_upvotes(tx: &mut Transaction<'_, Sqlite>) -> Result<i32> {
     let sitewide_upvotes: i32 = sqlx::query_scalar(
         "
         with upvotes_at_sample_time as (
@@ -231,7 +244,7 @@ async fn get_sitewide_upvotes(pool: &SqlitePool) -> Result<i32> {
         )
         ",
     )
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     .expect("Failed to get sitewide upvotes at current tick");
 
@@ -239,7 +252,7 @@ async fn get_sitewide_upvotes(pool: &SqlitePool) -> Result<i32> {
 }
 
 // TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
-async fn get_expected_upvote_share(pool: &SqlitePool, post_id: i32) -> Result<f32> {
+async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<f32> {
     let expected_upvotes_by_post: f32 = sqlx::query_scalar(
         "
         select us.upvote_share_at_rank
@@ -254,7 +267,7 @@ async fn get_expected_upvote_share(pool: &SqlitePool, post_id: i32) -> Result<f3
         ",
     )
     .bind(post_id)
-    .fetch_one(pool)
+    .fetch_one(&mut **tx)
     .await
     .expect("Failed to get expected upvotes at current tick");
 
@@ -262,7 +275,9 @@ async fn get_expected_upvote_share(pool: &SqlitePool, post_id: i32) -> Result<f3
 }
 
 // TODO: remove once ranking by upvote rate works
-async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithRanks>> {
+async fn get_ranks_from_previous_tick(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<Vec<PostWithRanks>> {
     let ranks: Vec<PostWithRanks> = sqlx::query_as(
         "
         select
@@ -277,7 +292,7 @@ async fn get_ranks_from_previous_tick(pool: &SqlitePool) -> Result<Vec<PostWithR
         )
         ",
     )
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await
     .expect("Failed to get ranks for current tick");
 
