@@ -6,7 +6,7 @@ use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
 use sqlx::{query, sqlite::SqlitePool};
 
-pub async fn health_check() -> Result<axum::http::StatusCode> {
+pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
     Ok(axum::http::StatusCode::OK)
 }
 
