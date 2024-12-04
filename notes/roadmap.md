@@ -5,6 +5,7 @@
 - [ ] refactor upvote rate module
 - [ ] refactor model (get rid of unnecessary intermediate structs)
 - [ ] create readme
+- [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 - [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
 - [ ] once data model is more stable, setup dev workflow with cargo watch
 - [ ] so far only happy case programming -> implement proper error handling
@@ -14,6 +15,7 @@
 
 ## Rankings
 
+- [ ] come up with scheme to add other ranks if there are several pages
 - [ ] come up with ranking endpoints that clearly distinguish between comment ranking and global ranking
 - [ ] `newest` ranking (trivial)
 - [ ] Reddit `hot` metric

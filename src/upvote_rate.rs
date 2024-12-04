@@ -1,19 +1,8 @@
-// SUMMARY:
-// ============================================================================================
-// NOTES:
-// - sitewide upvotes is just count of all upvotes that happened after the last sampletime
-// - we don't necessarily want users of the service to have to track where votes occured, so we
-// still need a scheme to estimate upvote share per page
-//
-// TODO:
-// - [ ] calculate cumulative expected upvotes as previous cumulative expected upvotes + expected
-// upvotes at rank combination at current tick
-// - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
-
-use crate::model::{Post, PostWithRanks, StatsObservation};
+use crate::model::{PostWithRanks, QnStatsObservation, Score};
 use crate::util::now_millis;
 use anyhow::Result;
 use axum::response::IntoResponse;
+use itertools::Itertools;
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
 
 pub async fn sample_ranks(
@@ -41,7 +30,7 @@ pub async fn sample_ranks(
         .expect("Couldn't get rank history size");
     if rank_history_size == 0 {
         println!("No ranks recorded yet - Initializing...");
-        let _: Vec<PostWithRanks> = sqlx::query_as(
+        sqlx::query(
             "
             with posts_in_pool as (
                 select
@@ -53,7 +42,6 @@ pub async fn sample_ranks(
             )
             insert into rank_history
             select * from posts_in_pool
-            returning *
             ",
         )
         .fetch_all(&mut *tx)
@@ -61,29 +49,22 @@ pub async fn sample_ranks(
         .expect("Failed to get posts in pool");
     }
 
+    let previous_sample_time: i64 =
+        sqlx::query_scalar("select max(sample_time) from stats_history")
+            .fetch_one(&mut *tx)
+            .await
+            .expect("Failed to get previous sample time");
+
     let sample_time = now_millis();
 
     println!("Sampling posts at: {:?}", sample_time);
 
-    let _ = insert_stats_from_current_tick(&mut tx, sample_time).await;
+    let new_stats: Vec<QnStatsObservation> =
+        calc_and_insert_newest_stats(&mut tx, sample_time, previous_sample_time)
+            .await
+            .unwrap();
 
-    let mut current_stats_for_ranking = get_posts_with_stats_for_current_tick(&mut tx)
-        .await
-        .unwrap();
-
-    current_stats_for_ranking.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap().reverse());
-
-    let new_ranks: Vec<PostWithRanks> = current_stats_for_ranking
-        .iter()
-        .enumerate()
-        .map(|(i, stat)| PostWithRanks {
-            post_id: stat.post_id,
-            sample_time,
-            rank_top: i as i32 + 1,
-        })
-        .collect();
-
-    insert_ranks_from_current_tick(&mut tx, &new_ranks).await;
+    calc_and_insert_newest_ranks(&mut tx, &new_stats).await;
 
     tx.commit()
         .await
@@ -92,75 +73,58 @@ pub async fn sample_ranks(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn insert_stats_from_current_tick(
+async fn calc_and_insert_newest_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
-) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
-    let stats: Vec<StatsObservation> = get_posts_with_stats_for_current_tick(&mut *tx)
-        .await
-        .unwrap();
+    previous_sample_time: i64,
+) -> Result<Vec<QnStatsObservation>> {
+    let previous_stats: Vec<QnStatsObservation> =
+        get_posts_with_stats(&mut *tx, previous_sample_time)
+            .await
+            .unwrap();
+
     let sitewide_upvotes = get_sitewide_upvotes(&mut *tx).await.unwrap();
 
-    for s in &stats {
+    let mut new_stats = Vec::<QnStatsObservation>::new();
+
+    for s in &previous_stats {
         let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.post_id)
             .await
             .unwrap();
-        let current_upvote_count = get_current_upvote_count(&mut *tx, s.post_id).await.unwrap();
-        let current_expected_upvote_count =
+        let new_cumulative_upvotes = get_current_upvote_count(&mut *tx, s.post_id).await.unwrap();
+        let new_cumulative_expected_upvotes =
             s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
-        let post: Post = sqlx::query_as(
-            "
-            select *
-            from post
-            where post_id = ?
-            ",
-        )
-        .bind(s.post_id)
-        .fetch_one(&mut **tx)
-        .await
-        .expect("Failed to get current post");
-        let age_hours = (sample_time - post.created_at) as f32 / 60.0 / 60.0;
 
-        let score = calc_score(
-            age_hours,
-            current_upvote_count,
-            current_expected_upvote_count,
-        );
+        let new_stat = QnStatsObservation {
+            post_id: s.post_id,
+            submission_time: s.submission_time,
+            sample_time,
+            cumulative_upvotes: new_cumulative_upvotes,
+            cumulative_expected_upvotes: new_cumulative_expected_upvotes,
+        };
 
-        let _result = query(
+        query(
             "
             insert into stats_history (
                   post_id
                 , sample_time
                 , cumulative_upvotes
                 , cumulative_expected_upvotes
-                , score
-            ) values (?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?)
             ",
         )
-        .bind(s.post_id)
-        .bind(sample_time)
-        .bind(current_upvote_count)
-        .bind(current_expected_upvote_count)
-        .bind(score)
+        .bind(new_stat.post_id)
+        .bind(new_stat.sample_time)
+        .bind(new_stat.cumulative_upvotes)
+        .bind(new_stat.cumulative_expected_upvotes)
         .execute(&mut **tx)
         .await
         .expect("Failed to insert new stats history entry");
+
+        new_stats.push(new_stat);
     }
 
-    Ok(axum::http::StatusCode::OK)
-}
-
-fn calc_score(age: f32, upvotes: i32, expected_upvotes: f32) -> f32 {
-    // TODO: sane default for 0.0 expected upvotes
-    let estimated_upvote_rate: f32 = if expected_upvotes != 0.0 {
-        upvotes as f32 / expected_upvotes
-    } else {
-        0.0
-    };
-    let numerator = (age * estimated_upvote_rate).powf(0.8);
-    let denominator = (age + 2.0).powf(1.8);
-    numerator / denominator
+    Ok(new_stats)
 }
 
 async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<i32> {
@@ -182,11 +146,22 @@ async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, post_id: i32
     Ok(upvote_count)
 }
 
-async fn insert_ranks_from_current_tick(
+async fn calc_and_insert_newest_ranks(
     tx: &mut Transaction<'_, Sqlite>,
-    ranks: &Vec<PostWithRanks>,
+    stats: &Vec<QnStatsObservation>,
 ) -> impl IntoResponse {
-    for r in ranks {
+    let newest_ranks: Vec<PostWithRanks> = stats
+        .into_iter()
+        .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
+        .enumerate()
+        .map(|(i, stat)| PostWithRanks {
+            post_id: stat.post_id,
+            sample_time: stat.sample_time,
+            rank_top: i as i32 + 1,
+        })
+        .collect();
+
+    for r in &newest_ranks {
         if let Err(_) = query(
             "
             insert into rank_history (
@@ -209,10 +184,11 @@ async fn insert_ranks_from_current_tick(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn get_posts_with_stats_for_current_tick(
+async fn get_posts_with_stats(
     tx: &mut Transaction<'_, Sqlite>,
-) -> Result<Vec<StatsObservation>> {
-    let newest_stories = sqlx::query_as::<_, StatsObservation>(
+    sample_time: i64,
+) -> Result<Vec<QnStatsObservation>> {
+    let newest_stories = sqlx::query_as::<_, QnStatsObservation>(
         "
         with newest_posts as (
             select
@@ -225,37 +201,33 @@ async fn get_posts_with_stats_for_current_tick(
         , latest_stats_history as (
             select *
             from stats_history
-            where sample_time = (
-                select max(sample_time)
-                from stats_history
-            )
+            where sample_time = ?
         )
         , with_cumulative_expected_upvotes as (
             select
                   np.post_id
+                , np.created_at as submission_time
                 , lsh.sample_time
                 , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
                 , coalesce(lsh.cumulative_expected_upvotes, 0.0) as cumulative_expected_upvotes
-                , coalesce(lsh.score, 0.0) as score
             from newest_posts np
             left outer join latest_stats_history lsh
             on np.post_id = lsh.post_id
         )
         select
               post_id
+            , submission_time
             , sample_time
             , cumulative_upvotes
             , cumulative_expected_upvotes
-            , score
         from with_cumulative_expected_upvotes
         order by cumulative_upvotes desc
         ",
     )
+    .bind(sample_time)
     .fetch_all(&mut **tx)
     .await
     .expect("Failed to get newest stories");
-
-    println!("Currently tracked stories: {:?}", newest_stories.len());
 
     Ok(newest_stories)
 }
