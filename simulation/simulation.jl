@@ -5,44 +5,44 @@ using Random
 
 host_url = "http://localhost:3000"
 endpoints = Dict(
-    :create_post => "/create_post",
+    :create_item => "/create_item",
     :send_vote_event => "/send_vote_event",
 )
 
 comment_probability = 0.8
-post_to_vote_ratio = 0.05
+item_to_vote_ratio = 0.05
 
-post_buffer = Int[]
+item_buffer = Int[]
 vote_event_buffer = Int[]
 
-function create_post!(post_buf::Array{Int}, host::String, endpoint::String, comment_probability::Float64)
-    (post_id, parent_id) = isempty(post_buf) ? (1, nothing) : (maximum(post_buf) + 1, rand(post_buf))
+function create_item!(item_buf::Array{Int}, host::String, endpoint::String, comment_probability::Float64)
+    (item_id, parent_id) = isempty(item_buf) ? (1, nothing) : (maximum(item_buf) + 1, rand(item_buf))
 
-    post = Dict(
-        "post_id" => post_id,
+    item = Dict(
+        "item_id" => item_id,
         "parent_id" => parent_id,
         "created_at" => Int(floor(Dates.time())),
     )
     headers = Dict("Content-Type" => "application/json")
 
-    println("Creating post: ", post_id, "...")
+    println("Creating item: ", item_id, "...")
 
     HTTP.post(
         host_url * endpoint,
         headers,
-        body=JSON.json(post)
+        body=JSON.json(item)
     )
 
-    push!(post_buf, post_id)
+    push!(item_buf, item_id)
 end
 
-function send_vote_event!(vote_event_buf::Array{Int}, post_buf::Array{Int}, host::String, endpoint::String)
+function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, host::String, endpoint::String)
     vote_event_id = isempty(vote_event_buf) ? 1 : maximum(vote_event_buf) + 1
-    post_id = rand(post_buf)
+    item_id = rand(item_buf)
 
     vote_event = Dict(
         "vote_event_id" => vote_event_id,
-        "post_id" => post_id,
+        "item_id" => item_id,
         "vote" => 1,
         "created_at" => Int(floor(Dates.time())),
     )
@@ -60,18 +60,18 @@ function send_vote_event!(vote_event_buf::Array{Int}, post_buf::Array{Int}, host
 end
 
 for i in 1:1000
-    if (rand() > post_to_vote_ratio) && !isempty(post_buffer)
+    if (rand() > item_to_vote_ratio) && !isempty(item_buffer)
         send_vote_event!(
             vote_event_buffer,
-            post_buffer,
+            item_buffer,
             host_url,
             endpoints[:send_vote_event],
         )
     else
-        create_post!(
-            post_buffer,
+        create_item!(
+            item_buffer,
             host_url,
-            endpoints[:create_post],
+            endpoints[:create_item],
             comment_probability,
         )
     end

@@ -1,4 +1,4 @@
-use crate::model::{PostWithRanks, QnStatsObservation, Score};
+use crate::model::{ItemWithRanks, QnStatsObservation, Score};
 use crate::util::now_millis;
 use anyhow::Result;
 use axum::response::IntoResponse;
@@ -15,12 +15,12 @@ pub async fn sample_ranks(
         .await
         .expect("Failed to create transaction for rank sampling");
 
-    let n_posts: i32 = sqlx::query_scalar("select count(*) from post")
+    let n_items: i32 = sqlx::query_scalar("select count(*) from item")
         .fetch_one(&mut *tx)
         .await
-        .expect("Couldn't get post count");
-    if n_posts == 0 {
-        println!("Waiting for posts to rank - Skipping...");
+        .expect("Couldn't get item count");
+    if n_items == 0 {
+        println!("Waiting for items to rank - Skipping...");
         return Ok(axum::http::StatusCode::OK);
     }
 
@@ -32,21 +32,21 @@ pub async fn sample_ranks(
         println!("No ranks recorded yet - Initializing...");
         sqlx::query(
             "
-            with posts_in_pool as (
+            with items_in_pool as (
                 select
-                      post_id
+                      item_id
                     , 0 as sample_time
                     , row_number() over (order by created_at desc) as rank_top
-                from post
+                from item
                 limit 1500
             )
             insert into rank_history
-            select * from posts_in_pool
+            select * from items_in_pool
             ",
         )
         .fetch_all(&mut *tx)
         .await
-        .expect("Failed to get posts in pool");
+        .expect("Failed to get items in pool");
     }
 
     let previous_sample_time: i64 =
@@ -57,7 +57,7 @@ pub async fn sample_ranks(
 
     let sample_time = now_millis();
 
-    println!("Sampling posts at: {:?}", sample_time);
+    println!("Sampling stats at: {:?}", sample_time);
 
     let new_stats: Vec<QnStatsObservation> =
         calc_and_insert_newest_stats(&mut tx, sample_time, previous_sample_time)
@@ -79,7 +79,7 @@ async fn calc_and_insert_newest_stats(
     previous_sample_time: i64,
 ) -> Result<Vec<QnStatsObservation>> {
     let previous_stats: Vec<QnStatsObservation> =
-        get_posts_with_stats(&mut *tx, previous_sample_time)
+        get_items_with_stats(&mut *tx, previous_sample_time)
             .await
             .unwrap();
 
@@ -90,15 +90,15 @@ async fn calc_and_insert_newest_stats(
     let mut new_stats = Vec::<QnStatsObservation>::new();
 
     for s in &previous_stats {
-        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.post_id)
+        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.item_id)
             .await
             .unwrap();
-        let new_cumulative_upvotes = get_current_upvote_count(&mut *tx, s.post_id).await.unwrap();
+        let new_cumulative_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await.unwrap();
         let new_cumulative_expected_upvotes =
             s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
 
         let new_stat = QnStatsObservation {
-            post_id: s.post_id,
+            item_id: s.item_id,
             submission_time: s.submission_time,
             sample_time,
             cumulative_upvotes: new_cumulative_upvotes,
@@ -108,14 +108,14 @@ async fn calc_and_insert_newest_stats(
         query(
             "
             insert into stats_history (
-                  post_id
+                  item_id
                 , sample_time
                 , cumulative_upvotes
                 , cumulative_expected_upvotes
             ) values (?, ?, ?, ?)
             ",
         )
-        .bind(new_stat.post_id)
+        .bind(new_stat.item_id)
         .bind(new_stat.sample_time)
         .bind(new_stat.cumulative_upvotes)
         .bind(new_stat.cumulative_expected_upvotes)
@@ -129,18 +129,18 @@ async fn calc_and_insert_newest_stats(
     Ok(new_stats)
 }
 
-async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<i32> {
+async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<i32> {
     let upvote_count: i32 = sqlx::query_scalar(
         "
         select count(*)
-        from post p
+        from item i
         join vote_event ve
-        on p.post_id = ve.post_id
+        on i.item_id = ve.item_id
         where vote = 1
-        and p.post_id = ?
+        and i.item_id = ?
         ",
     )
-    .bind(post_id)
+    .bind(item_id)
     .fetch_one(&mut **tx)
     .await
     .expect("Failed to get current vote count");
@@ -152,12 +152,12 @@ async fn calc_and_insert_newest_ranks(
     tx: &mut Transaction<'_, Sqlite>,
     stats: &Vec<QnStatsObservation>,
 ) -> impl IntoResponse {
-    let newest_ranks: Vec<PostWithRanks> = stats
+    let newest_ranks: Vec<ItemWithRanks> = stats
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
         .enumerate()
-        .map(|(i, stat)| PostWithRanks {
-            post_id: stat.post_id,
+        .map(|(i, stat)| ItemWithRanks {
+            item_id: stat.item_id,
             sample_time: stat.sample_time,
             rank_top: i as i32 + 1,
         })
@@ -167,13 +167,13 @@ async fn calc_and_insert_newest_ranks(
         if let Err(_) = query(
             "
             insert into rank_history (
-                  post_id
+                  item_id
                 , sample_time
                 , rank_top
             ) values (?, ?, ?)
             ",
         )
-        .bind(r.post_id)
+        .bind(r.item_id)
         .bind(r.sample_time)
         .bind(r.rank_top)
         .execute(&mut **tx)
@@ -186,17 +186,17 @@ async fn calc_and_insert_newest_ranks(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn get_posts_with_stats(
+async fn get_items_with_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
 ) -> Result<Vec<QnStatsObservation>> {
     let newest_stories = sqlx::query_as::<_, QnStatsObservation>(
         "
-        with newest_posts as (
+        with newest_items as (
             select
-                  post_id
+                  item_id
                 , created_at
-            from post
+            from item
             order by created_at desc
             limit 1500
         )
@@ -207,17 +207,17 @@ async fn get_posts_with_stats(
         )
         , with_cumulative_expected_upvotes as (
             select
-                  np.post_id
-                , np.created_at as submission_time
+                  ni.item_id
+                , ni.created_at as submission_time
                 , lsh.sample_time
                 , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
                 , coalesce(lsh.cumulative_expected_upvotes, 0.0) as cumulative_expected_upvotes
-            from newest_posts np
+            from newest_items ni
             left outer join latest_stats_history lsh
-            on np.post_id = lsh.post_id
+            on ni.item_id = lsh.item_id
         )
         select
-              post_id
+              item_id
             , submission_time
             , sample_time
             , cumulative_upvotes
@@ -255,15 +255,15 @@ async fn get_sitewide_new_upvotes(
 }
 
 // TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
-async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i32) -> Result<f32> {
+async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<f32> {
     let previously_unranked: i32 = sqlx::query_scalar(
         "
         select count(*) = 0
         from rank_history
-        where post_id = ?
+        where item_id = ?
         ",
     )
-    .bind(post_id)
+    .bind(item_id)
     .fetch_one(&mut **tx)
     .await
     .expect("Failed to determine previous ranking status");
@@ -282,10 +282,10 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, post_id: i3
             select max(sample_time)
             from rank_history
         )
-        and post_id = ?
+        and item_id = ?
         ",
     )
-    .bind(post_id)
+    .bind(item_id)
     .fetch_one(&mut **tx)
     .await
     .expect("Failed to get expected upvotes at current tick");

@@ -10,20 +10,20 @@ pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
     Ok(axum::http::StatusCode::OK)
 }
 
-pub async fn create_post(
+pub async fn create_item(
     State(pool): State<SqlitePool>,
-    Json(payload): Json<model::Post>,
+    Json(payload): Json<model::Item>,
 ) -> impl IntoResponse {
     if let Err(_) = query(
         "
-        insert into post (
-              post_id
+        insert into item (
+              item_id
             , parent_id
             , created_at
         ) values (?, ?, ?)
         ",
     )
-    .bind(payload.post_id)
+    .bind(payload.item_id)
     .bind(payload.parent_id)
     .bind(payload.created_at)
     .execute(&pool)
@@ -43,14 +43,14 @@ pub async fn send_vote_event(
         "
         insert into vote_event (
               vote_event_id
-            , post_id
+            , item_id
             , vote
             , created_at
         ) values (?, ?, ?, ?)
         ",
     )
     .bind(payload.vote_event_id)
-    .bind(payload.post_id)
+    .bind(payload.item_id)
     .bind(payload.vote)
     .bind(payload.created_at)
     .execute(&pool)
@@ -65,33 +65,33 @@ pub async fn send_vote_event(
 // TODO: handle unvotes and revotes
 pub async fn get_hacker_news_ranking(
     State(pool): State<SqlitePool>,
-) -> Result<Json<Vec<model::ScoredPost>>, AppError> {
+) -> Result<Json<Vec<model::ScoredItem>>, AppError> {
     let sample_time = now_millis();
 
     let rows: Vec<model::HnStatsObservation> = sqlx::query_as::<_, model::HnStatsObservation>(
         "
-        with newest_posts as (
+        with newest_items as (
             select *
-            from post
+            from item
             order by created_at desc
             limit 1500
         )
         , upvote_counts as (
           select
-              post_id
+              item_id
             , count(*) as upvotes
           from vote_event
           where vote = 1
-          group by post_id
+          group by item_id
         )
         select
-            np.post_id
-          , np.created_at as submission_time
+            ni.item_id
+          , ni.created_at as submission_time
           , ? as sample_time
           , uc.upvotes
-        from newest_posts np
+        from newest_items ni
         join upvote_counts uc
-        on np.post_id = uc.post_id
+        on ni.item_id = uc.item_id
         ",
     )
     .bind(sample_time)
@@ -99,13 +99,13 @@ pub async fn get_hacker_news_ranking(
     .await
     .expect("Failed to fetch row");
 
-    let scored_posts: Vec<model::ScoredPost> = rows
+    let scored_items: Vec<model::ScoredItem> = rows
         .into_iter()
-        .map(|elem| model::ScoredPost {
-            post_id: elem.post_id,
-            score: elem.score(),
+        .map(|item| model::ScoredItem {
+            item_id: item.item_id,
+            score: item.score(),
         })
         .collect();
 
-    Ok(Json(scored_posts))
+    Ok(Json(scored_items))
 }

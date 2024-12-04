@@ -10,7 +10,7 @@ pub async fn start_http_server(pool: SqlitePool) -> Result<()> {
     let app = Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .route("/health_check", get(api::health_check))
-        .route("/create_post", post(api::create_post))
+        .route("/create_item", post(api::create_item))
         .route("/send_vote_event", post(api::send_vote_event))
         .route("/rankings/hn", get(api::get_hacker_news_ranking))
         .with_state(pool);
