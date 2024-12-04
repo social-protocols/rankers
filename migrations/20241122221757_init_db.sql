@@ -38,35 +38,26 @@ with upvotes_at_sample_time as (
     ) as upvotes_at_sample_time
   from stats_history
 )
-, sitewide_upvotes_at_tick as (
+, sitewide_upvotes_at_sample_time as (
   select
       sample_time
     , sum(upvotes_at_sample_time) as sitewide_upvotes
   from upvotes_at_sample_time
   group by sample_time
 )
-, with_sitewide as (
-  select
-      rh.post_id
-    , rh.sample_time
-    , rh.rank_top
-    , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
-    , suat.sitewide_upvotes
-  from rank_history rh
-  left outer join upvotes_at_sample_time uast
-  on rh.post_id = uast.post_id
-  and rh.sample_time = uast.sample_time
-  join sitewide_upvotes_at_tick suat
-  on rh.sample_time = suat.sample_time
-)
 select
-      post_id
-    , sample_time
-    , rank_top
-    , upvotes
-    , sitewide_upvotes
-    , coalesce(cast(upvotes as real) / sitewide_upvotes, 0) as upvotes_share
-from with_sitewide;
+    rh.post_id
+  , rh.sample_time
+  , rh.rank_top
+  , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
+  , suat.sitewide_upvotes
+  , coalesce(cast(uast.upvotes_at_sample_time as real) / suat.sitewide_upvotes, 0) as upvotes_share
+from rank_history rh
+left outer join upvotes_at_sample_time uast
+on rh.post_id = uast.post_id
+and rh.sample_time = uast.sample_time
+join sitewide_upvotes_at_sample_time suat
+on rh.sample_time = suat.sample_time;
 
 create view if not exists upvote_share as
 select
