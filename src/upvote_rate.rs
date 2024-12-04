@@ -83,7 +83,9 @@ async fn calc_and_insert_newest_stats(
             .await
             .unwrap();
 
-    let sitewide_upvotes = get_sitewide_upvotes(&mut *tx).await.unwrap();
+    let sitewide_upvotes = get_sitewide_new_upvotes(&mut *tx, previous_sample_time)
+        .await
+        .unwrap();
 
     let mut new_stats = Vec::<QnStatsObservation>::new();
 
@@ -232,30 +234,19 @@ async fn get_posts_with_stats(
     Ok(newest_stories)
 }
 
-async fn get_sitewide_upvotes(tx: &mut Transaction<'_, Sqlite>) -> Result<i32> {
+async fn get_sitewide_new_upvotes(
+    tx: &mut Transaction<'_, Sqlite>,
+    previous_sample_time: i64,
+) -> Result<i32> {
     let sitewide_upvotes: i32 = sqlx::query_scalar(
         "
-        with upvotes_at_sample_time as (
-            select
-                post_id
-                , sample_time
-                , coalesce(
-                    cumulative_upvotes - lag(cumulative_upvotes) over (
-                        partition by post_id
-                        order by sample_time
-                    ),
-                    0
-                ) as upvotes_at_sample_time
-            from stats_history
-        )
-        select sum(upvotes_at_sample_time) as sitewide_upvotes
-        from upvotes_at_sample_time
-        where sample_time = (
-            select max(sample_time)
-            from upvotes_at_sample_time
-        )
+        select count(*)
+        from vote_event
+        where vote = 1
+        and created_at > ?
         ",
     )
+    .bind(previous_sample_time)
     .fetch_one(&mut **tx)
     .await
     .expect("Failed to get sitewide upvotes at current tick");
