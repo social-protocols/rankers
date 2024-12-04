@@ -2,14 +2,12 @@
 
 ## General
 
-- [ ] refactor upvote rate module
-- [ ] refactor model (get rid of unnecessary intermediate structs)
+- [ ] so far only happy case programming -> implement proper error handling
+- [ ] setup logging
 - [ ] create readme
 - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 - [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
 - [ ] once data model is more stable, setup dev workflow with cargo watch
-- [ ] so far only happy case programming -> implement proper error handling
-- [ ] setup logging
 - [ ] create first client library
 - [ ] setup configuration options -> if only certain rankings are required, some tasks don't need to be added to the scheduler (e.g., QN rankings require periodical sampling of stats)
 
