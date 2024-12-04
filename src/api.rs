@@ -6,7 +6,7 @@ use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
 use sqlx::{query, sqlite::SqlitePool};
 
-pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
+pub async fn health_check() -> Result<axum::http::StatusCode> {
     Ok(axum::http::StatusCode::OK)
 }
 
@@ -96,8 +96,7 @@ pub async fn get_hacker_news_ranking(
     )
     .bind(sample_time)
     .fetch_all(&pool)
-    .await
-    .expect("Failed to fetch row");
+    .await?;
 
     let scored_items: Vec<model::ScoredItem> = rows
         .into_iter()

@@ -5,6 +5,7 @@
 - [ ] so far only happy case programming -> implement proper error handling
     - [ ] first error handling in the core logic
     - [ ] then axum/tower error handling before errors propagate all the way up to the api
+- [ ] merge `ItemWithRanks` and `QnStatsObservation`
 - [ ] setup logging
 - [ ] create readme
 - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)

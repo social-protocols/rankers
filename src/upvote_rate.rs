@@ -4,21 +4,18 @@ use anyhow::Result;
 use axum::response::IntoResponse;
 use itertools::Itertools;
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
+use crate::error::AppError;
 
 pub async fn sample_ranks(
     pool: &SqlitePool,
-) -> Result<axum::http::StatusCode, axum::http::StatusCode> {
+) -> Result<axum::http::StatusCode, AppError> {
     // TODO: come up with a better initialization logic
 
-    let mut tx = pool
-        .begin()
-        .await
-        .expect("Failed to create transaction for rank sampling");
+    let mut tx = pool.begin().await?;
 
     let n_items: i32 = sqlx::query_scalar("select count(*) from item")
         .fetch_one(&mut *tx)
-        .await
-        .expect("Couldn't get item count");
+        .await?;
     if n_items == 0 {
         println!("Waiting for items to rank - Skipping...");
         return Ok(axum::http::StatusCode::OK);
@@ -26,8 +23,7 @@ pub async fn sample_ranks(
 
     let rank_history_size: i32 = sqlx::query_scalar("select count(*) from rank_history")
         .fetch_one(&mut *tx)
-        .await
-        .expect("Couldn't get rank history size");
+        .await?;
     if rank_history_size == 0 {
         println!("No ranks recorded yet - Initializing...");
         sqlx::query(
@@ -45,15 +41,13 @@ pub async fn sample_ranks(
             ",
         )
         .fetch_all(&mut *tx)
-        .await
-        .expect("Failed to get items in pool");
+        .await?;
     }
 
     let previous_sample_time: i64 =
         sqlx::query_scalar("select max(sample_time) from stats_history")
             .fetch_one(&mut *tx)
-            .await
-            .expect("Failed to get previous sample time");
+            .await?;
 
     let sample_time = now_millis();
 
@@ -129,7 +123,7 @@ async fn calc_and_insert_newest_stats(
     Ok(new_stats)
 }
 
-async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<i32> {
+async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<i32, AppError> {
     let upvote_count: i32 = sqlx::query_scalar(
         "
         select count(*)
@@ -142,8 +136,7 @@ async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, item_id: i32
     )
     .bind(item_id)
     .fetch_one(&mut **tx)
-    .await
-    .expect("Failed to get current vote count");
+    .await?;
 
     Ok(upvote_count)
 }
@@ -189,7 +182,7 @@ async fn calc_and_insert_newest_ranks(
 async fn get_items_with_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
-) -> Result<Vec<QnStatsObservation>> {
+) -> Result<Vec<QnStatsObservation>, AppError> {
     let newest_stories = sqlx::query_as::<_, QnStatsObservation>(
         "
         with newest_items as (
@@ -228,8 +221,7 @@ async fn get_items_with_stats(
     )
     .bind(sample_time)
     .fetch_all(&mut **tx)
-    .await
-    .expect("Failed to get newest stories");
+    .await?;
 
     Ok(newest_stories)
 }
@@ -237,7 +229,7 @@ async fn get_items_with_stats(
 async fn get_sitewide_new_upvotes(
     tx: &mut Transaction<'_, Sqlite>,
     previous_sample_time: i64,
-) -> Result<i32> {
+) -> Result<i32, AppError> {
     let sitewide_upvotes: i32 = sqlx::query_scalar(
         "
         select count(*)
@@ -248,14 +240,13 @@ async fn get_sitewide_new_upvotes(
     )
     .bind(previous_sample_time)
     .fetch_one(&mut **tx)
-    .await
-    .expect("Failed to get sitewide upvotes at current tick");
+    .await?;
 
     Ok(sitewide_upvotes)
 }
 
 // TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
-async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<f32> {
+async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<f32, AppError> {
     let previously_unranked: i32 = sqlx::query_scalar(
         "
         select count(*) = 0
@@ -265,8 +256,7 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, item_id: i3
     )
     .bind(item_id)
     .fetch_one(&mut **tx)
-    .await
-    .expect("Failed to determine previous ranking status");
+    .await?;
 
     if previously_unranked == 1 {
         return Ok(0.0);
@@ -287,8 +277,7 @@ async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, item_id: i3
     )
     .bind(item_id)
     .fetch_one(&mut **tx)
-    .await
-    .expect("Failed to get expected upvotes at current tick");
+    .await?;
 
     Ok(expected_upvotes)
 }
