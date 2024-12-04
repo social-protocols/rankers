@@ -1,14 +1,12 @@
+use crate::error::AppError;
 use crate::model::{ItemWithRanks, QnStatsObservation, Score};
 use crate::util::now_millis;
 use anyhow::Result;
 use axum::response::IntoResponse;
 use itertools::Itertools;
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
-use crate::error::AppError;
 
-pub async fn sample_ranks(
-    pool: &SqlitePool,
-) -> Result<axum::http::StatusCode, AppError> {
+pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, AppError> {
     // TODO: come up with a better initialization logic
 
     let mut tx = pool.begin().await?;
@@ -123,7 +121,10 @@ async fn calc_and_insert_newest_stats(
     Ok(new_stats)
 }
 
-async fn get_current_upvote_count(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<i32, AppError> {
+async fn get_current_upvote_count(
+    tx: &mut Transaction<'_, Sqlite>,
+    item_id: i32,
+) -> Result<i32, AppError> {
     let upvote_count: i32 = sqlx::query_scalar(
         "
         select count(*)
@@ -246,7 +247,10 @@ async fn get_sitewide_new_upvotes(
 }
 
 // TODO: replace with an actual model of expected upvotes by rank combination (and other factors)
-async fn get_expected_upvote_share(tx: &mut Transaction<'_, Sqlite>, item_id: i32) -> Result<f32, AppError> {
+async fn get_expected_upvote_share(
+    tx: &mut Transaction<'_, Sqlite>,
+    item_id: i32,
+) -> Result<f32, AppError> {
     let previously_unranked: i32 = sqlx::query_scalar(
         "
         select count(*) = 0
