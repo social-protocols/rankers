@@ -4,6 +4,7 @@
 
 - [ ] so far only happy case programming -> implement proper error handling
 - [ ] setup logging
+- [ ] refactor sql code in initial migration
 - [ ] create readme
 - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 - [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)

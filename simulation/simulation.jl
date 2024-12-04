@@ -1,7 +1,3 @@
-# TODO:
-#   - [ ] implement random voting with appropriate probability model (for now,
-#         just uniform distribution over all posts)
-
 using HTTP
 using Dates
 using JSON
