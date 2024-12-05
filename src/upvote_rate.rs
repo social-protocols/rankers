@@ -85,16 +85,16 @@ async fn calc_and_insert_newest_stats(
         let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.item_id)
             .await
             .unwrap();
-        let new_cumulative_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await.unwrap();
-        let new_cumulative_expected_upvotes =
-            s.cumulative_expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
+        let new_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await.unwrap();
+        let new_expected_upvotes =
+            s.expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
 
         let new_stat = QnStatsObservation {
             item_id: s.item_id,
             submission_time: s.submission_time,
             sample_time,
-            cumulative_upvotes: new_cumulative_upvotes,
-            cumulative_expected_upvotes: new_cumulative_expected_upvotes,
+            upvotes: new_upvotes,
+            expected_upvotes: new_expected_upvotes,
         };
 
         query(
@@ -102,15 +102,15 @@ async fn calc_and_insert_newest_stats(
             insert into stats_history (
                   item_id
                 , sample_time
-                , cumulative_upvotes
-                , cumulative_expected_upvotes
+                , upvotes
+                , expected_upvotes
             ) values (?, ?, ?, ?)
             ",
         )
         .bind(new_stat.item_id)
         .bind(new_stat.sample_time)
-        .bind(new_stat.cumulative_upvotes)
-        .bind(new_stat.cumulative_expected_upvotes)
+        .bind(new_stat.upvotes)
+        .bind(new_stat.expected_upvotes)
         .execute(&mut **tx)
         .await
         .expect("Failed to insert new stats history entry");
@@ -199,13 +199,13 @@ async fn get_items_with_stats(
             from stats_history
             where sample_time = ?
         )
-        , with_cumulative_expected_upvotes as (
+        , with_expected_upvotes as (
             select
                   ni.item_id
                 , ni.created_at as submission_time
                 , lsh.sample_time
-                , coalesce(lsh.cumulative_upvotes, 0) as cumulative_upvotes
-                , coalesce(lsh.cumulative_expected_upvotes, 0.0) as cumulative_expected_upvotes
+                , coalesce(lsh.upvotes, 0) as upvotes
+                , coalesce(lsh.expected_upvotes, 0.0) as expected_upvotes
             from newest_items ni
             left outer join latest_stats_history lsh
             on ni.item_id = lsh.item_id
@@ -214,10 +214,10 @@ async fn get_items_with_stats(
               item_id
             , submission_time
             , sample_time
-            , cumulative_upvotes
-            , cumulative_expected_upvotes
-        from with_cumulative_expected_upvotes
-        order by cumulative_upvotes desc
+            , upvotes
+            , expected_upvotes
+        from with_expected_upvotes
+        order by upvotes desc
         ",
     )
     .bind(sample_time)

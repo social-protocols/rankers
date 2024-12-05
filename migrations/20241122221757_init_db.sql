@@ -14,8 +14,8 @@ create table if not exists vote_event (
 create table if not exists stats_history (
     item_id                     integer not null references item(item_id)
   , sample_time                 integer not null
-  , cumulative_upvotes          integer not null
-  , cumulative_expected_upvotes real    not null
+  , upvotes          integer not null
+  , expected_upvotes real    not null
 ) strict;
 
 create table if not exists rank_history (
@@ -30,7 +30,7 @@ with upvotes_at_sample_time as (
       item_id
     , sample_time
     , coalesce(
-      cumulative_upvotes - lag(cumulative_upvotes) over (
+      upvotes - lag(upvotes) over (
         partition by item_id
         order by sample_time
       ),
