@@ -74,4 +74,5 @@ pub struct ItemWithRanks {
     pub item_id: i32,
     pub sample_time: i64,
     pub rank_top: i32,
+    pub rank_new: i32,
 }

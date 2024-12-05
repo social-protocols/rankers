@@ -31,6 +31,7 @@ pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, A
                       item_id
                     , 0 as sample_time
                     , row_number() over (order by created_at desc) as rank_top
+                    , row_number() over (order by created_at desc) as rank_new
                 from item
                 limit 1500
             )
@@ -69,7 +70,7 @@ async fn calc_and_insert_newest_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
     previous_sample_time: i64,
-) -> Result<Vec<QnStatsObservation>> {
+) -> Result<Vec<QnStatsObservation>, AppError> {
     let previous_stats: Vec<QnStatsObservation> =
         get_items_with_stats(&mut *tx, previous_sample_time)
             .await
@@ -82,10 +83,8 @@ async fn calc_and_insert_newest_stats(
     let mut new_stats = Vec::<QnStatsObservation>::new();
 
     for s in &previous_stats {
-        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.item_id)
-            .await
-            .unwrap();
-        let new_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await.unwrap();
+        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.item_id).await?;
+        let new_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await?;
         let new_expected_upvotes =
             s.expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
 
@@ -112,8 +111,7 @@ async fn calc_and_insert_newest_stats(
         .bind(new_stat.upvotes)
         .bind(new_stat.expected_upvotes)
         .execute(&mut **tx)
-        .await
-        .expect("Failed to insert new stats history entry");
+        .await?;
 
         new_stats.push(new_stat);
     }
@@ -150,10 +148,13 @@ async fn calc_and_insert_newest_ranks(
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
         .enumerate()
-        .map(|(i, stat)| ItemWithRanks {
+        .sorted_by(|(_, a), (_, b)| a.submission_time.partial_cmp(&b.submission_time).unwrap())
+        .enumerate()
+        .map(|(rank_new, (rank_top, stat))| ItemWithRanks {
             item_id: stat.item_id,
             sample_time: stat.sample_time,
-            rank_top: i as i32 + 1,
+            rank_top: rank_top as i32 + 1,
+            rank_new: rank_new as i32 + 1,
         })
         .collect();
 
@@ -164,12 +165,14 @@ async fn calc_and_insert_newest_ranks(
                   item_id
                 , sample_time
                 , rank_top
-            ) values (?, ?, ?)
+                , rank_new
+            ) values (?, ?, ?, ?)
             ",
         )
         .bind(r.item_id)
         .bind(r.sample_time)
         .bind(r.rank_top)
+        .bind(r.rank_new)
         .execute(&mut **tx)
         .await
         {

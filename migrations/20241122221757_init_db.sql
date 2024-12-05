@@ -22,6 +22,7 @@ create table if not exists rank_history (
     item_id     integer not null
   , sample_time integer not null
   , rank_top    integer
+  , rank_new    integer
 ) strict;
 
 create view if not exists upvotes_at_rank_history as
@@ -49,6 +50,7 @@ select
     rh.item_id
   , rh.sample_time
   , rh.rank_top
+  , rh.rank_new
   , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
   , suat.sitewide_upvotes
   , coalesce(cast(uast.upvotes_at_sample_time as real) / suat.sitewide_upvotes, 0) as upvotes_share
@@ -59,6 +61,7 @@ and rh.sample_time = uast.sample_time
 join sitewide_upvotes_at_sample_time suat
 on rh.sample_time = suat.sample_time;
 
+-- TODO: This model only takes rank_top into account. We need a model that incorporates all ranks
 create view if not exists upvote_share as
 select
     rank_top
