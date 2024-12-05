@@ -4,15 +4,15 @@ use crate::util::now_millis;
 use anyhow::Result;
 use axum::response::IntoResponse;
 use itertools::Itertools;
-use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};
+use sqlx::{query, Sqlite, Transaction};
 
-pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, AppError> {
+pub async fn sample_ranks(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<axum::http::StatusCode, AppError> {
     // TODO: come up with a better initialization logic
 
-    let mut tx = pool.begin().await?;
-
     let n_items: i32 = sqlx::query_scalar("select count(*) from item")
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
     if n_items == 0 {
         println!("Waiting for items to rank - Skipping...");
@@ -20,7 +20,7 @@ pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, A
     }
 
     let rank_history_size: i32 = sqlx::query_scalar("select count(*) from rank_history")
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut **tx)
         .await?;
     if rank_history_size == 0 {
         println!("No ranks recorded yet - Initializing...");
@@ -39,13 +39,14 @@ pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, A
             select * from items_in_pool
             ",
         )
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut **tx)
         .await?;
+        return Ok(axum::http::StatusCode::OK);
     }
 
     let previous_sample_time: i64 =
         sqlx::query_scalar("select max(sample_time) from stats_history")
-            .fetch_one(&mut *tx)
+            .fetch_one(&mut **tx)
             .await?;
 
     let sample_time = now_millis();
@@ -53,13 +54,11 @@ pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, A
     println!("Sampling stats at: {:?}", sample_time);
 
     let new_stats: Vec<QnStatsObservation> =
-        calc_and_insert_newest_stats(&mut tx, sample_time, previous_sample_time)
+        calc_and_insert_newest_stats(tx, sample_time, previous_sample_time)
             .await
             .unwrap();
 
-    calc_and_insert_newest_ranks(&mut tx, &new_stats).await;
-
-    tx.commit().await?;
+    calc_and_insert_newest_ranks(tx, &new_stats).await;
 
     Ok(axum::http::StatusCode::OK)
 }
