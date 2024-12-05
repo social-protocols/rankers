@@ -16,7 +16,7 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
         .add(Job::new_async(cron_expression, move |_uuid, _l| {
             let job_pool = Arc::clone(&job_pool);
             Box::pin(async move {
-                // TODO: handle error case
+                // TODO: start and commit transaction here and rollback if sample_ranks returns Err
                 let _ = upvote_rate::sample_ranks(&job_pool).await;
             })
         })?)

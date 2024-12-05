@@ -29,7 +29,7 @@ pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, A
             with items_in_pool as (
                 select
                       item_id
-                    , 0 as sample_time
+                    , unixepoch('subsec') * 1000 as sample_time
                     , row_number() over (order by created_at desc) as rank_top
                     , row_number() over (order by created_at desc) as rank_new
                 from item
@@ -59,9 +59,7 @@ pub async fn sample_ranks(pool: &SqlitePool) -> Result<axum::http::StatusCode, A
 
     calc_and_insert_newest_ranks(&mut tx, &new_stats).await;
 
-    tx.commit()
-        .await
-        .expect("Failed to commit transaction for rank sampling");
+    tx.commit().await?;
 
     Ok(axum::http::StatusCode::OK)
 }

@@ -2,6 +2,7 @@
 
 ## General
 
+- [ ] transactions in upvote rate component should be started and committed by the scheduler
 - [ ] so far only happy case programming -> implement proper error handling
     - [ ] first error handling in the core logic
     - [ ] then axum/tower error handling before errors propagate all the way up to the api
