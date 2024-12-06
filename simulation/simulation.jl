@@ -15,13 +15,17 @@ item_to_vote_ratio = 0.05
 item_buffer = Int[]
 vote_event_buffer = Int[]
 
+function now_unix_millis()
+    return Int(floor(datetime2unix(Dates.now()) * 1000))
+end
+
 function create_item!(item_buf::Array{Int}, host::String, endpoint::String, comment_probability::Float64)
     (item_id, parent_id) = isempty(item_buf) ? (1, nothing) : (maximum(item_buf) + 1, rand(item_buf))
 
     item = Dict(
         "item_id" => item_id,
         "parent_id" => parent_id,
-        "created_at" => Int(floor(Dates.time())),
+        "created_at" => now_unix_millis(),
     )
     headers = Dict("Content-Type" => "application/json")
 
@@ -44,7 +48,7 @@ function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, host
         "vote_event_id" => vote_event_id,
         "item_id" => item_id,
         "vote" => 1,
-        "created_at" => Int(floor(Dates.time())),
+        "created_at" => now_unix_millis(),
     )
     headers = Dict("Content-Type" => "application/json")
 
