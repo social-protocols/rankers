@@ -2,15 +2,22 @@
 _default:
   @just --list --unsorted
 
+# Setup the development environment. Should only be run once
+setup-dev-env:
+  scripts/dev_setup.sh
+
+# Start the server and a simulated that sends random posts and vote events to the api
 dev:
   process-compose up -t=false
 
-migrate:
-  sqlx migrate run
-
+# Enter an interactive sqlite session
 db:
   litecli $DATABASE_PATH
 
-# TODO: configure in editor config (on save)
-format:
-  cargo fmt
+# Run migrations that are not yet applied to the database
+db-migrate:
+  sqlx migrate run
+
+# Drop the database and recreate it, running all migrations
+db-reset:
+  sqlx database reset
