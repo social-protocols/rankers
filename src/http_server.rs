@@ -9,7 +9,6 @@ use sqlx::SqlitePool;
 
 pub async fn start_http_server(pool: SqlitePool) -> Result<(), AppError> {
     let app = Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
         .route("/health_check", get(api::health_check))
         .route("/items", post(api::register_item))
         .route("/vote_events", post(api::register_vote_event))
