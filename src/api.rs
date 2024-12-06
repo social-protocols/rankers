@@ -1,6 +1,5 @@
 use crate::error::AppError;
-use crate::model;
-use crate::model::{Score, ScoredItem};
+use crate::model::{HnStats, Item, Observation, Score, ScoredItem, VoteEvent};
 use crate::util::now_utc_millis;
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
@@ -14,9 +13,9 @@ pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
 
 pub async fn create_item(
     State(pool): State<SqlitePool>,
-    Json(payload): Json<model::Item>,
-) -> impl IntoResponse {
-    if let Err(_) = query(
+    Json(payload): Json<Item>,
+) -> Result<impl IntoResponse, AppError> {
+    query(
         "
         insert into item (
               item_id
@@ -29,19 +28,16 @@ pub async fn create_item(
     .bind(payload.parent_id)
     .bind(payload.created_at)
     .execute(&pool)
-    .await
-    {
-        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-    }
+    .await?;
 
     Ok(axum::http::StatusCode::OK)
 }
 
 pub async fn send_vote_event(
     State(pool): State<SqlitePool>,
-    Json(payload): Json<model::VoteEvent>,
-) -> Result<impl IntoResponse, axum::http::StatusCode> {
-    if let Err(_) = query(
+    Json(payload): Json<VoteEvent>,
+) -> Result<impl IntoResponse, AppError> {
+    query(
         "
         insert into vote_event (
               vote_event_id
@@ -56,10 +52,7 @@ pub async fn send_vote_event(
     .bind(payload.vote)
     .bind(payload.created_at)
     .execute(&pool)
-    .await
-    {
-        return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-    }
+    .await?;
 
     Ok(axum::http::StatusCode::OK)
 }
@@ -67,10 +60,10 @@ pub async fn send_vote_event(
 // TODO: handle unvotes and revotes
 pub async fn get_hacker_news_ranking(
     State(pool): State<SqlitePool>,
-) -> Result<Json<Vec<model::ScoredItem>>, AppError> {
+) -> Result<Json<Vec<ScoredItem>>, AppError> {
     let sample_time = now_utc_millis();
 
-    let rows: Vec<model::HnStatsObservation> = sqlx::query_as::<_, model::HnStatsObservation>(
+    let current_stats: Vec<HnStats> = sqlx::query_as::<_, HnStats>(
         "
         with newest_items as (
             select *
@@ -89,21 +82,31 @@ pub async fn get_hacker_news_ranking(
         select
             ni.item_id
           , ni.created_at as submission_time
-          , ? as sample_time
           , uc.upvotes
         from newest_items ni
         join upvote_counts uc
         on ni.item_id = uc.item_id
         ",
     )
-    .bind(sample_time)
     .fetch_all(&pool)
     .await?;
 
-    let scored_items: Vec<model::ScoredItem> = rows
+    let stats_observations: Vec<Observation<HnStats>> = current_stats
         .into_iter()
-        .map(|item| model::ScoredItem {
-            item_id: item.item_id,
+        .map(|stat| Observation {
+            sample_time,
+            data: HnStats {
+                item_id: stat.item_id,
+                submission_time: stat.submission_time,
+                upvotes: stat.upvotes,
+            },
+        })
+        .collect();
+
+    let scored_items: Vec<ScoredItem> = stats_observations
+        .into_iter()
+        .map(|item| ScoredItem {
+            item_id: item.data.item_id,
             score: item.score(),
         })
         .collect();
@@ -120,13 +123,14 @@ pub async fn get_ranking_quality_news(
         .fetch_one(&mut *tx)
         .await?;
 
-    let stats = crate::upvote_rate::get_items_with_stats(&mut tx, latest_sample_time).await?;
+    let current_stats =
+        crate::upvote_rate::get_items_with_stats(&mut tx, latest_sample_time).await?;
 
-    let scored_items: Vec<ScoredItem> = stats
+    let scored_items: Vec<ScoredItem> = current_stats
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
         .map(|item| ScoredItem {
-            item_id: item.item_id,
+            item_id: item.data.item_id,
             score: item.score(),
         })
         .collect();

@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::model::{ItemWithRanks, QnStatsObservation, Score};
+use crate::model::{ItemWithRanks, Observation, QnStats, Score};
 use crate::util::now_utc_millis;
 use anyhow::Result;
 use itertools::Itertools;
@@ -10,10 +10,13 @@ pub async fn sample_ranks(
 ) -> Result<axum::http::StatusCode, AppError> {
     // TODO: come up with a better initialization logic
 
-    let n_items: i32 = sqlx::query_scalar("select count(*) from item")
+    let sample_time = now_utc_millis();
+    println!("Sampling stats at: {:?}", sample_time);
+
+    let any_items_exist: bool = sqlx::query_scalar("select exists (select 1 from item)")
         .fetch_one(&mut **tx)
         .await?;
-    if n_items == 0 {
+    if !any_items_exist {
         println!("Waiting for items to rank - Skipping...");
         return Ok(axum::http::StatusCode::OK);
     }
@@ -48,11 +51,7 @@ pub async fn sample_ranks(
             .fetch_one(&mut **tx)
             .await?;
 
-    let sample_time = now_utc_millis();
-
-    println!("Sampling stats at: {:?}", sample_time);
-
-    let new_stats: Vec<QnStatsObservation> =
+    let new_stats: Vec<Observation<QnStats>> =
         calc_and_insert_newest_stats(tx, sample_time, previous_sample_time).await?;
 
     calc_and_insert_newest_ranks(tx, &new_stats).await?;
@@ -64,26 +63,28 @@ async fn calc_and_insert_newest_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
     previous_sample_time: i64,
-) -> Result<Vec<QnStatsObservation>, AppError> {
-    let previous_stats: Vec<QnStatsObservation> =
+) -> Result<Vec<Observation<QnStats>>, AppError> {
+    let previous_stats: Vec<Observation<QnStats>> =
         get_items_with_stats(&mut *tx, previous_sample_time).await?;
 
     let sitewide_upvotes = get_sitewide_new_upvotes(&mut *tx, previous_sample_time).await?;
 
-    let mut new_stats = Vec::<QnStatsObservation>::new();
+    let mut new_stats = Vec::<Observation<QnStats>>::new();
 
     for s in &previous_stats {
-        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.item_id).await?;
-        let new_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await?;
+        let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.data.item_id).await?;
+        let new_upvotes = get_current_upvote_count(&mut *tx, s.data.item_id).await?;
         let new_expected_upvotes =
-            s.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
+            s.data.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
 
-        let new_stat = QnStatsObservation {
-            item_id: s.item_id,
-            submission_time: s.submission_time,
+        let new_stat = Observation {
             sample_time,
-            upvotes: new_upvotes,
-            expected_upvotes: new_expected_upvotes,
+            data: QnStats {
+                item_id: s.data.item_id,
+                submission_time: s.data.submission_time,
+                upvotes: new_upvotes,
+                expected_upvotes: new_expected_upvotes,
+            },
         };
 
         query(
@@ -96,10 +97,10 @@ async fn calc_and_insert_newest_stats(
             ) values (?, ?, ?, ?)
             ",
         )
-        .bind(new_stat.item_id)
+        .bind(new_stat.data.item_id)
         .bind(new_stat.sample_time)
-        .bind(new_stat.upvotes)
-        .bind(new_stat.expected_upvotes)
+        .bind(new_stat.data.upvotes)
+        .bind(new_stat.data.expected_upvotes)
         .execute(&mut **tx)
         .await?;
 
@@ -132,16 +133,21 @@ async fn get_current_upvote_count(
 
 async fn calc_and_insert_newest_ranks(
     tx: &mut Transaction<'_, Sqlite>,
-    stats: &Vec<QnStatsObservation>,
+    stats: &Vec<Observation<QnStats>>,
 ) -> Result<axum::http::StatusCode, AppError> {
     let newest_ranks: Vec<ItemWithRanks> = stats
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
         .enumerate()
-        .sorted_by(|(_, a), (_, b)| a.submission_time.partial_cmp(&b.submission_time).unwrap())
+        .sorted_by(|(_, a), (_, b)| {
+            a.data
+                .submission_time
+                .partial_cmp(&b.data.submission_time)
+                .unwrap()
+        })
         .enumerate()
         .map(|(rank_new, (rank_top, stat))| ItemWithRanks {
-            item_id: stat.item_id,
+            item_id: stat.data.item_id,
             sample_time: stat.sample_time,
             rank_top: rank_top as i32 + 1,
             rank_new: rank_new as i32 + 1,
@@ -173,8 +179,8 @@ async fn calc_and_insert_newest_ranks(
 pub async fn get_items_with_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
-) -> Result<Vec<QnStatsObservation>, AppError> {
-    let newest_stories = sqlx::query_as::<_, QnStatsObservation>(
+) -> Result<Vec<Observation<QnStats>>, AppError> {
+    let stats_at_sample_time = sqlx::query_as::<_, QnStats>(
         "
         with newest_items as (
             select
@@ -203,7 +209,6 @@ pub async fn get_items_with_stats(
         select
               item_id
             , submission_time
-            , sample_time
             , upvotes
             , expected_upvotes
         from with_expected_upvotes
@@ -214,7 +219,20 @@ pub async fn get_items_with_stats(
     .fetch_all(&mut **tx)
     .await?;
 
-    Ok(newest_stories)
+    let stats_observations = stats_at_sample_time
+        .into_iter()
+        .map(|stat| Observation {
+            sample_time,
+            data: QnStats {
+                item_id: stat.item_id,
+                submission_time: stat.submission_time,
+                upvotes: stat.upvotes,
+                expected_upvotes: stat.expected_upvotes,
+            },
+        })
+        .collect();
+
+    Ok(stats_observations)
 }
 
 async fn get_sitewide_new_upvotes(
