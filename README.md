@@ -1,7 +1,7 @@
 # rankers
 
-[!WARNING]
-Early stage project, don't use in production yet.
+> [!WARNING]
+> Early stage project, don't use in production yet.
 
 *A service that provides different ranking methods for a wide range of social software.*
 
