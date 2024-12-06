@@ -11,7 +11,7 @@ pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
     Ok(axum::http::StatusCode::OK)
 }
 
-pub async fn create_item(
+pub async fn register_item(
     State(pool): State<SqlitePool>,
     Json(payload): Json<Item>,
 ) -> Result<impl IntoResponse, AppError> {
@@ -35,7 +35,7 @@ pub async fn create_item(
     Ok(axum::http::StatusCode::OK)
 }
 
-pub async fn send_vote_event(
+pub async fn register_vote_event(
     State(pool): State<SqlitePool>,
     Json(payload): Json<VoteEvent>,
 ) -> Result<impl IntoResponse, AppError> {

@@ -5,8 +5,8 @@ using Random
 
 host_url = "http://localhost:3000"
 endpoints = Dict(
-    :create_item => "/create_item",
-    :send_vote_event => "/send_vote_event",
+    :items => "/items",
+    :vote_events => "/vote_events",
 )
 
 comment_probability = 0.8
@@ -19,7 +19,7 @@ function now_utc_millis()
     return Int(floor(datetime2unix(Dates.now(UTC)) * 1000))
 end
 
-function create_item!(item_buf::Array{Int}, author_id::Int, host::String, endpoint::String, comment_probability::Float64)
+function send_item!(item_buf::Array{Int}, author_id::Int, host::String, endpoint::String, comment_probability::Float64)
     (item_id, parent_id) = isempty(item_buf) ? (1, nothing) : (maximum(item_buf) + 1, rand(item_buf))
 
     item = Dict(
@@ -74,14 +74,14 @@ for i in 1:1000
             item_buffer,
             rand(users),
             host_url,
-            endpoints[:send_vote_event],
+            endpoints[:vote_events],
         )
     else
-        create_item!(
+        send_item!(
             item_buffer,
             rand(users),
             host_url,
-            endpoints[:create_item],
+            endpoints[:items],
             comment_probability,
         )
     end
