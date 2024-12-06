@@ -2,18 +2,18 @@
 
 ## General
 
-- [ ] transactions in upvote rate component should be started and committed by the scheduler
+- [ ] setup logging/tracing
 - [ ] so far only happy case programming -> implement proper error handling
     - [ ] first error handling in the core logic
     - [ ] then axum/tower error handling before errors propagate all the way up to the api
 - [ ] merge `ItemWithRanks` and `QnStatsObservation`
-- [ ] setup logging
 - [ ] create readme
 - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 - [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
 - [ ] once data model is more stable, setup dev workflow with cargo watch
 - [ ] create first client library
 - [ ] setup configuration options -> if only certain rankings are required, some tasks don't need to be added to the scheduler (e.g., QN rankings require periodical sampling of stats)
+- [ ] look into gRPC for generating clients
 
 ## Rankings
 

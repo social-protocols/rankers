@@ -2,7 +2,6 @@ use crate::error::AppError;
 use crate::model::{ItemWithRanks, QnStatsObservation, Score};
 use crate::util::now_millis;
 use anyhow::Result;
-use axum::response::IntoResponse;
 use itertools::Itertools;
 use sqlx::{query, Sqlite, Transaction};
 
@@ -54,11 +53,9 @@ pub async fn sample_ranks(
     println!("Sampling stats at: {:?}", sample_time);
 
     let new_stats: Vec<QnStatsObservation> =
-        calc_and_insert_newest_stats(tx, sample_time, previous_sample_time)
-            .await
-            .unwrap();
+        calc_and_insert_newest_stats(tx, sample_time, previous_sample_time).await?;
 
-    calc_and_insert_newest_ranks(tx, &new_stats).await;
+    calc_and_insert_newest_ranks(tx, &new_stats).await?;
 
     Ok(axum::http::StatusCode::OK)
 }
@@ -140,7 +137,7 @@ async fn get_current_upvote_count(
 async fn calc_and_insert_newest_ranks(
     tx: &mut Transaction<'_, Sqlite>,
     stats: &Vec<QnStatsObservation>,
-) -> impl IntoResponse {
+) -> Result<axum::http::StatusCode, AppError> {
     let newest_ranks: Vec<ItemWithRanks> = stats
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
@@ -156,7 +153,7 @@ async fn calc_and_insert_newest_ranks(
         .collect();
 
     for r in &newest_ranks {
-        if let Err(_) = query(
+        query(
             "
             insert into rank_history (
                   item_id
@@ -171,10 +168,7 @@ async fn calc_and_insert_newest_ranks(
         .bind(r.rank_top)
         .bind(r.rank_new)
         .execute(&mut **tx)
-        .await
-        {
-            return Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-        }
+        .await?;
     }
 
     Ok(axum::http::StatusCode::OK)
