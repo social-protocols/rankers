@@ -16,9 +16,7 @@ mod util;
 async fn main() -> Result<()> {
     dotenv().ok();
 
-    let pool: sqlx::SqlitePool = database::setup_database()
-        .await
-        .expect("Failed to create database pool");
+    let pool: sqlx::SqlitePool = database::setup_database().await?;
 
     scheduler::start_scheduler(Arc::clone(&Arc::new(pool.clone())))
         .await

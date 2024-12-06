@@ -17,8 +17,6 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
         .add(Job::new_async(cron_expression, move |_uuid, _l| {
             let job_pool = Arc::clone(&job_pool);
             Box::pin(async move {
-                // TODO: start and commit transaction here and rollback if sample_ranks returns Err
-
                 let mut tx: Transaction<'_, Sqlite> =
                     job_pool.begin().await.expect("Couldn't create transaction");
                 match upvote_rate::sample_ranks(&mut tx).await {
