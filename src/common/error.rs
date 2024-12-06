@@ -2,8 +2,8 @@
 // INLINED FROM: https://github.com/social-protocols/prototype-1/blob/main/src/error.rs
 // --------------------------------------------------------------------
 
-use axum::http::StatusCode;
 use axum::{
+    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };

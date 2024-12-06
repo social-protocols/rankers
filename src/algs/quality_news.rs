@@ -1,9 +1,59 @@
-use crate::error::AppError;
-use crate::model::{ItemWithRanks, Observation, QnStats, Score};
+use crate::common::error::AppError;
+use crate::common::model::{Observation, Score, ScoredItem};
 use crate::util::now_utc_millis;
 use anyhow::Result;
 use itertools::Itertools;
-use sqlx::{query, Sqlite, Transaction};
+use serde::{Deserialize, Serialize};
+use sqlx::{query, query_scalar, FromRow, Sqlite, Transaction};
+
+#[derive(FromRow, Serialize, Deserialize, Debug)]
+pub struct QnStats {
+    pub item_id: i32,
+    pub submission_time: i64,
+    pub upvotes: i32,
+    pub expected_upvotes: f32,
+}
+
+impl Score for Observation<QnStats> {
+    fn score(&self) -> f32 {
+        // TODO: sane default for 0.0 expected upvotes
+        let age_hours =
+            (self.sample_time - self.data.submission_time) as f32 / 1000.0 / 60.0 / 60.0;
+        let estimated_upvote_rate: f32 = if self.data.expected_upvotes != 0.0 {
+            self.data.upvotes as f32 / self.data.expected_upvotes
+        } else {
+            0.0
+        };
+        (age_hours * estimated_upvote_rate).powf(0.8) / (age_hours + 2.0).powf(1.8)
+    }
+}
+
+#[derive(FromRow, Serialize, Deserialize, Debug)]
+pub struct ItemWithRanks {
+    pub item_id: i32,
+    pub sample_time: i64,
+    pub rank_top: i32,
+    pub rank_new: i32,
+}
+
+pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredItem>, AppError> {
+    let latest_sample_time: i64 = query_scalar("select max(sample_time) from stats_history")
+        .fetch_one(&mut **tx)
+        .await?;
+
+    let current_stats = get_items_with_stats(tx, latest_sample_time).await?;
+
+    let scored_items: Vec<ScoredItem> = current_stats
+        .into_iter()
+        .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
+        .map(|item| ScoredItem {
+            item_id: item.data.item_id,
+            score: item.score(),
+        })
+        .collect();
+
+    Ok(scored_items)
+}
 
 pub async fn sample_ranks(
     tx: &mut Transaction<'_, Sqlite>,

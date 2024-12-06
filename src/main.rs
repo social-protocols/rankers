@@ -3,13 +3,12 @@ use dotenv::dotenv;
 use http_server::start_http_server;
 use std::sync::Arc;
 
+mod algs;
 mod api;
+mod common;
 mod database;
-mod error;
 mod http_server;
-mod model;
 mod scheduler;
-mod upvote_rate;
 mod util;
 
 #[tokio::main]

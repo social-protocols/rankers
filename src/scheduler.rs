@@ -1,7 +1,6 @@
-use crate::error::AppError;
-use crate::upvote_rate;
-use sqlx::SqlitePool;
-use sqlx::{Sqlite, Transaction};
+use crate::algs::quality_news;
+use crate::common::error::AppError;
+use sqlx::{Sqlite, SqlitePool, Transaction};
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
@@ -19,7 +18,7 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
             Box::pin(async move {
                 let mut tx: Transaction<'_, Sqlite> =
                     job_pool.begin().await.expect("Couldn't create transaction");
-                match upvote_rate::sample_ranks(&mut tx).await {
+                match quality_news::sample_ranks(&mut tx).await {
                     Ok(_) => {
                         tx.commit().await.unwrap();
                     }
