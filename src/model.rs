@@ -57,15 +57,13 @@ pub struct QnStatsObservation {
 impl Score for QnStatsObservation {
     fn score(&self) -> f32 {
         // TODO: sane default for 0.0 expected upvotes
-        let age_hours = (self.sample_time - self.submission_time) as f32 / 60.0 / 60.0;
+        let age_hours = (self.sample_time - self.submission_time) as f32 / 1000.0 / 60.0 / 60.0;
         let estimated_upvote_rate: f32 = if self.expected_upvotes != 0.0 {
             self.upvotes as f32 / self.expected_upvotes
         } else {
             0.0
         };
-        let numerator = (age_hours * estimated_upvote_rate).powf(0.8);
-        let denominator = (age_hours + 2.0).powf(1.8);
-        numerator / denominator
+        (age_hours * estimated_upvote_rate).powf(0.8) / (age_hours + 2.0).powf(1.8)
     }
 }
 

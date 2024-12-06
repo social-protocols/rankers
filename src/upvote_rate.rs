@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::model::{ItemWithRanks, QnStatsObservation, Score};
-use crate::util::now_millis;
+use crate::util::now_utc_millis;
 use anyhow::Result;
 use itertools::Itertools;
 use sqlx::{query, Sqlite, Transaction};
@@ -48,7 +48,7 @@ pub async fn sample_ranks(
             .fetch_one(&mut **tx)
             .await?;
 
-    let sample_time = now_millis();
+    let sample_time = now_utc_millis();
 
     println!("Sampling stats at: {:?}", sample_time);
 
@@ -66,13 +66,9 @@ async fn calc_and_insert_newest_stats(
     previous_sample_time: i64,
 ) -> Result<Vec<QnStatsObservation>, AppError> {
     let previous_stats: Vec<QnStatsObservation> =
-        get_items_with_stats(&mut *tx, previous_sample_time)
-            .await
-            .unwrap();
+        get_items_with_stats(&mut *tx, previous_sample_time).await?;
 
-    let sitewide_upvotes = get_sitewide_new_upvotes(&mut *tx, previous_sample_time)
-        .await
-        .unwrap();
+    let sitewide_upvotes = get_sitewide_new_upvotes(&mut *tx, previous_sample_time).await?;
 
     let mut new_stats = Vec::<QnStatsObservation>::new();
 
@@ -80,7 +76,7 @@ async fn calc_and_insert_newest_stats(
         let expected_upvote_share = get_expected_upvote_share(&mut *tx, s.item_id).await?;
         let new_upvotes = get_current_upvote_count(&mut *tx, s.item_id).await?;
         let new_expected_upvotes =
-            s.expected_upvotes + (expected_upvote_share * sitewide_upvotes as f32);
+            s.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
 
         let new_stat = QnStatsObservation {
             item_id: s.item_id,

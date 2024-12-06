@@ -1,8 +1,5 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::Utc;
 
-pub fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Couldn't get current time to record sample time")
-        .as_millis() as i64
+pub fn now_utc_millis() -> i64 {
+    Utc::now().timestamp_millis()
 }
