@@ -1,10 +1,12 @@
 use crate::error::AppError;
 use crate::model;
-use crate::model::Score;
+use crate::model::{Score, ScoredItem};
 use crate::util::now_millis;
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
-use sqlx::{query, sqlite::SqlitePool};
+use sqlx::{query, query_scalar, sqlite::SqlitePool};
+use sqlx::{Sqlite, Transaction};
+use itertools::Itertools;
 
 pub async fn health_check() -> Result<axum::http::StatusCode, AppError> {
     Ok(axum::http::StatusCode::OK)
@@ -105,6 +107,31 @@ pub async fn get_hacker_news_ranking(
             score: item.score(),
         })
         .collect();
+
+    Ok(Json(scored_items))
+}
+
+pub async fn get_ranking_quality_news(
+    State(pool): State<SqlitePool>,
+) -> Result<Json<Vec<ScoredItem>>, AppError> {
+
+    let mut tx: Transaction<'_, Sqlite> = pool.begin().await?;
+
+    let latest_sample_time: i64 = query_scalar("select max(sample_time) from stats_history")
+        .fetch_one(&mut *tx)
+        .await?;
+
+    let stats = crate::upvote_rate::get_items_with_stats(&mut tx, latest_sample_time).await?;
+
+    let scored_items: Vec<ScoredItem> = stats.into_iter()
+        .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
+        .map(|item| ScoredItem {
+            item_id: item.item_id,
+            score: item.score(),
+        })
+        .collect();
+
+    tx.commit().await?;
 
     Ok(Json(scored_items))
 }

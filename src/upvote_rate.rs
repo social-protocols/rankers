@@ -174,7 +174,7 @@ async fn calc_and_insert_newest_ranks(
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn get_items_with_stats(
+pub async fn get_items_with_stats(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
 ) -> Result<Vec<QnStatsObservation>, AppError> {
@@ -245,9 +245,9 @@ async fn get_expected_upvote_share(
     tx: &mut Transaction<'_, Sqlite>,
     item_id: i32,
 ) -> Result<f32, AppError> {
-    let previously_unranked: i32 = sqlx::query_scalar(
+    let ranking_entries: i32 = sqlx::query_scalar(
         "
-        select count(*) = 0
+        select count(*)
         from rank_history
         where item_id = ?
         ",
@@ -256,7 +256,8 @@ async fn get_expected_upvote_share(
     .fetch_one(&mut **tx)
     .await?;
 
-    if previously_unranked == 1 {
+    // previously unseen items
+    if ranking_entries == 0 {
         return Ok(0.0);
     }
 
