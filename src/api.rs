@@ -19,12 +19,14 @@ pub async fn create_item(
         "
         insert into item (
               item_id
+            , author_id
             , parent_id
             , created_at
-        ) values (?, ?, ?)
+        ) values (?, ?, ?, ?)
         ",
     )
     .bind(payload.item_id)
+    .bind(payload.author_id)
     .bind(payload.parent_id)
     .bind(payload.created_at)
     .execute(&pool)
@@ -42,13 +44,15 @@ pub async fn send_vote_event(
         insert into vote_event (
               vote_event_id
             , item_id
+            , user_id
             , vote
             , created_at
-        ) values (?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?)
         ",
     )
     .bind(payload.vote_event_id)
     .bind(payload.item_id)
+    .bind(payload.user_id)
     .bind(payload.vote)
     .bind(payload.created_at)
     .execute(&pool)

@@ -19,12 +19,13 @@ function now_utc_millis()
     return Int(floor(datetime2unix(Dates.now(UTC)) * 1000))
 end
 
-function create_item!(item_buf::Array{Int}, host::String, endpoint::String, comment_probability::Float64)
+function create_item!(item_buf::Array{Int}, author_id::Int, host::String, endpoint::String, comment_probability::Float64)
     (item_id, parent_id) = isempty(item_buf) ? (1, nothing) : (maximum(item_buf) + 1, rand(item_buf))
 
     item = Dict(
         "item_id" => item_id,
         "parent_id" => parent_id,
+        "author_id" => author_id,
         "created_at" => now_utc_millis(),
     )
     headers = Dict("Content-Type" => "application/json")
@@ -40,13 +41,14 @@ function create_item!(item_buf::Array{Int}, host::String, endpoint::String, comm
     push!(item_buf, item_id)
 end
 
-function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, host::String, endpoint::String)
+function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, user_id::Int, host::String, endpoint::String)
     vote_event_id = isempty(vote_event_buf) ? 1 : maximum(vote_event_buf) + 1
     item_id = rand(item_buf)
 
     vote_event = Dict(
         "vote_event_id" => vote_event_id,
         "item_id" => item_id,
+        "user_id" => user_id,
         "vote" => 1,
         "created_at" => now_utc_millis(),
     )
@@ -63,21 +65,25 @@ function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, host
     push!(vote_event_buf, vote_event_id)
 end
 
+users = collect(1:100)
+
 for i in 1:1000
     if (rand() > item_to_vote_ratio) && !isempty(item_buffer)
         send_vote_event!(
             vote_event_buffer,
             item_buffer,
+            rand(users),
             host_url,
             endpoints[:send_vote_event],
         )
     else
         create_item!(
             item_buffer,
+            rand(users),
             host_url,
             endpoints[:create_item],
             comment_probability,
         )
     end
-    sleep(1)
+    sleep(0.1)
 end

@@ -42,7 +42,7 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
         .fetch_one(&mut **tx)
         .await?;
 
-    let current_stats = get_items_with_stats(tx, latest_sample_time).await?;
+    let current_stats = get_stats_observations(tx, latest_sample_time).await?;
 
     let scored_items: Vec<ScoredItem> = current_stats
         .into_iter()
@@ -72,10 +72,10 @@ pub async fn sample_ranks(
         return Ok(axum::http::StatusCode::OK);
     }
 
-    let rank_history_size: i32 = sqlx::query_scalar("select count(*) from rank_history")
+    let any_ranks_recorded: bool = sqlx::query_scalar("select exists (select 1 from rank_history)")
         .fetch_one(&mut **tx)
         .await?;
-    if rank_history_size == 0 {
+    if !any_ranks_recorded {
         println!("No ranks recorded yet - Initializing...");
         sqlx::query(
             "
@@ -116,7 +116,7 @@ async fn calc_and_insert_newest_stats(
     previous_sample_time: i64,
 ) -> Result<Vec<Observation<QnStats>>, AppError> {
     let previous_stats: Vec<Observation<QnStats>> =
-        get_items_with_stats(&mut *tx, previous_sample_time).await?;
+        get_stats_observations(&mut *tx, previous_sample_time).await?;
 
     let sitewide_upvotes = get_sitewide_new_upvotes(&mut *tx, previous_sample_time).await?;
 
@@ -169,8 +169,8 @@ async fn get_current_upvote_count(
         "
         select count(*)
         from item i
-        join vote_event ve
-        on i.item_id = ve.item_id
+        join vote v
+        on i.item_id = v.item_id
         where vote = 1
         and i.item_id = ?
         ",
@@ -229,13 +229,13 @@ async fn calc_and_insert_newest_ranks(
     Ok(axum::http::StatusCode::OK)
 }
 
-pub async fn get_items_with_stats(
+async fn get_stats_observations(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
 ) -> Result<Vec<Observation<QnStats>>, AppError> {
-    let stats_at_sample_time = sqlx::query_as::<_, QnStats>(
+    let stats_observations = sqlx::query_as::<_, QnStats>(
         "
-        with newest_items as (
+        with items_in_pool as (
             select
                   item_id
                 , created_at
@@ -243,47 +243,44 @@ pub async fn get_items_with_stats(
             order by created_at desc
             limit 1500
         )
-        , latest_stats_history as (
+        , stats_at_sample_time as (
             select *
             from stats_history
             where sample_time = ?
         )
-        , with_expected_upvotes as (
+        , stats as (
             select
-                  ni.item_id
-                , ni.created_at as submission_time
-                , lsh.sample_time
-                , coalesce(lsh.upvotes, 0) as upvotes
-                , coalesce(lsh.expected_upvotes, 0.0) as expected_upvotes
-            from newest_items ni
-            left outer join latest_stats_history lsh
-            on ni.item_id = lsh.item_id
+                  iip.item_id
+                , iip.created_at as submission_time
+                , coalesce(sast.upvotes, 0) as upvotes
+                , coalesce(sast.expected_upvotes, 0.0) as expected_upvotes
+            from items_in_pool iip
+            left outer join stats_at_sample_time sast
+            on iip.item_id = sast.item_id
         )
         select
               item_id
             , submission_time
             , upvotes
             , expected_upvotes
-        from with_expected_upvotes
+        from stats
         order by upvotes desc
         ",
     )
     .bind(sample_time)
     .fetch_all(&mut **tx)
-    .await?;
-
-    let stats_observations = stats_at_sample_time
-        .into_iter()
-        .map(|stat| Observation {
-            sample_time,
-            data: QnStats {
-                item_id: stat.item_id,
-                submission_time: stat.submission_time,
-                upvotes: stat.upvotes,
-                expected_upvotes: stat.expected_upvotes,
-            },
-        })
-        .collect();
+    .await?
+    .into_iter()
+    .map(|stat| Observation {
+        sample_time,
+        data: QnStats {
+            item_id: stat.item_id,
+            submission_time: stat.submission_time,
+            upvotes: stat.upvotes,
+            expected_upvotes: stat.expected_upvotes,
+        },
+    })
+    .collect();
 
     Ok(stats_observations)
 }
@@ -295,7 +292,7 @@ async fn get_sitewide_new_upvotes(
     let sitewide_upvotes: i32 = sqlx::query_scalar(
         "
         select count(*)
-        from vote_event
+        from vote
         where vote = 1
         and created_at > ?
         ",

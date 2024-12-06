@@ -20,7 +20,6 @@ impl Score for Observation<HnStats> {
     }
 }
 
-// TODO: handle unvotes and revotes
 pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredItem>, AppError> {
     let sample_time = now_utc_millis();
 
@@ -36,7 +35,7 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
           select
               item_id
             , count(*) as upvotes
-          from vote_event
+          from vote
           where vote = 1
           group by item_id
         )
