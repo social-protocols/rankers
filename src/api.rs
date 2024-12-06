@@ -1,6 +1,8 @@
 use crate::algs::{hacker_news, quality_news};
-use crate::common::error::AppError;
-use crate::common::model::{Item, ScoredItem, VoteEvent};
+use crate::common::{
+    error::AppError,
+    model::{Item, ScoredItem, VoteEvent},
+};
 use anyhow::Result;
 use axum::{extract::State, response::IntoResponse, Json};
 use sqlx::{query, sqlite::SqlitePool, Sqlite, Transaction};

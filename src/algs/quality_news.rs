@@ -1,5 +1,7 @@
-use crate::common::error::AppError;
-use crate::common::model::{Observation, Score, ScoredItem};
+use crate::common::{
+    error::AppError,
+    model::{Observation, Score, ScoredItem},
+};
 use crate::util::now_utc_millis;
 use anyhow::Result;
 use itertools::Itertools;
@@ -31,7 +33,6 @@ impl Score for Observation<QnStats> {
 #[derive(FromRow, Serialize, Deserialize, Debug)]
 pub struct ItemWithRanks {
     pub item_id: i32,
-    pub sample_time: i64,
     pub rank_top: i32,
     pub rank_new: i32,
 }
@@ -185,7 +186,7 @@ async fn calc_and_insert_newest_ranks(
     tx: &mut Transaction<'_, Sqlite>,
     stats: &Vec<Observation<QnStats>>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let newest_ranks: Vec<ItemWithRanks> = stats
+    let newest_ranks: Vec<Observation<ItemWithRanks>> = stats
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
         .enumerate()
@@ -196,11 +197,13 @@ async fn calc_and_insert_newest_ranks(
                 .unwrap()
         })
         .enumerate()
-        .map(|(rank_new, (rank_top, stat))| ItemWithRanks {
-            item_id: stat.data.item_id,
+        .map(|(rank_new, (rank_top, stat))| Observation {
             sample_time: stat.sample_time,
-            rank_top: rank_top as i32 + 1,
-            rank_new: rank_new as i32 + 1,
+            data: ItemWithRanks {
+                item_id: stat.data.item_id,
+                rank_top: rank_top as i32 + 1,
+                rank_new: rank_new as i32 + 1,
+            },
         })
         .collect();
 
@@ -215,10 +218,10 @@ async fn calc_and_insert_newest_ranks(
             ) values (?, ?, ?, ?)
             ",
         )
-        .bind(r.item_id)
+        .bind(r.data.item_id)
         .bind(r.sample_time)
-        .bind(r.rank_top)
-        .bind(r.rank_new)
+        .bind(r.data.rank_top)
+        .bind(r.data.rank_new)
         .execute(&mut **tx)
         .await?;
     }
