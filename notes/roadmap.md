@@ -14,7 +14,6 @@
 
 - [ ] come up with scheme to add other ranks if there are several pages
 - [ ] come up with ranking endpoints that clearly distinguish between comment ranking and global ranking
-- [ ] `newest` ranking (trivial)
 - [ ] Reddit `hot` metric
 - [ ] `global_brain` scoring
 

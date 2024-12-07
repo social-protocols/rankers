@@ -14,6 +14,7 @@ pub async fn start_http_server(pool: SqlitePool) -> Result<(), AppError> {
         .route("/vote_events", post(api::register_vote_event))
         .route("/rankings/hn", get(api::get_hacker_news_ranking))
         .route("/rankings/qn", get(api::get_ranking_quality_news))
+        .route("/rankings/newest", get(api::get_ranking_newest))
         .with_state(pool);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;

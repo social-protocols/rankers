@@ -1,4 +1,4 @@
-use crate::algs::{hacker_news, quality_news};
+use crate::algs::{hacker_news, newest, quality_news};
 use crate::common::{
     error::AppError,
     model::{Item, ScoredItem, VoteEvent},
@@ -76,6 +76,16 @@ pub async fn get_ranking_quality_news(
 ) -> Result<Json<Vec<ScoredItem>>, AppError> {
     let mut tx: Transaction<'_, Sqlite> = pool.begin().await?;
     let scored_items = quality_news::get_ranking(&mut tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(scored_items))
+}
+
+pub async fn get_ranking_newest(
+    State(pool): State<SqlitePool>,
+) -> Result<Json<Vec<ScoredItem>>, AppError> {
+    let mut tx: Transaction<'_, Sqlite> = pool.begin().await?;
+    let scored_items = newest::get_ranking(&mut tx).await?;
     tx.commit().await?;
 
     Ok(Json(scored_items))
