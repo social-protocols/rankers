@@ -19,7 +19,7 @@ function now_utc_millis()
     return Int(floor(datetime2unix(Dates.now(UTC)) * 1000))
 end
 
-function send_item!(item_buf::Array{Int}, author_id::Int, host::String, endpoint::String, comment_probability::Float64)
+function send_item!(item_buf::Array{Int}, author_id::String, host::String, endpoint::String, comment_probability::Float64)
     (item_id, parent_id) = isempty(item_buf) ? (1, nothing) : (maximum(item_buf) + 1, rand(item_buf))
 
     item = Dict(
@@ -35,13 +35,13 @@ function send_item!(item_buf::Array{Int}, author_id::Int, host::String, endpoint
     HTTP.post(
         host_url * endpoint,
         headers,
-        body=JSON.json(item)
+        body = JSON.json(item)
     )
 
     push!(item_buf, item_id)
 end
 
-function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, user_id::Int, host::String, endpoint::String)
+function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, user_id::String, host::String, endpoint::String)
     vote_event_id = isempty(vote_event_buf) ? 1 : maximum(vote_event_buf) + 1
     item_id = rand(item_buf)
 
@@ -59,13 +59,13 @@ function send_vote_event!(vote_event_buf::Array{Int}, item_buf::Array{Int}, user
     HTTP.post(
         host_url * endpoint,
         headers,
-        body=JSON.json(vote_event)
+        body = JSON.json(vote_event)
     )
 
     push!(vote_event_buf, vote_event_id)
 end
 
-users = collect(1:100)
+users = string.(collect(1:100))
 
 for i in 1:1000
     if (rand() > item_to_vote_ratio) && !isempty(item_buffer)

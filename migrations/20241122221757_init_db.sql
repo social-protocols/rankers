@@ -1,14 +1,14 @@
 create table if not exists item (
     item_id    integer not null primary key autoincrement
   , parent_id  integer          references item(item_id)
-  , author_id  integer not null
+  , author_id  text    not null
   , created_at integer not null default (unixepoch('subsec') * 1000)
 ) strict;
 
 create table if not exists vote_event (
     vote_event_id integer not null primary key autoincrement
   , item_id       integer not null references item(item_id)
-  , user_id       integer not null
+  , user_id       text    not null
   , vote          integer not null
   , created_at    integer not null default (unixepoch('subsec') * 1000)
 ) strict;
@@ -16,7 +16,7 @@ create table if not exists vote_event (
 create table vote (
     vote_event_id integer not null references vote_event(vote_event_id)
   , item_id       integer not null references item(item_id)
-  , user_id       integer not null
+  , user_id       text    not null
   , vote          integer not null
   , created_at    integer not null
   , primary key(user_id, item_id)

@@ -5,7 +5,7 @@ use sqlx::FromRow;
 pub struct VoteEvent {
     pub vote_event_id: i32,
     pub item_id: i32,
-    pub user_id: i32,
+    pub user_id: String,
     pub vote: i32,
     pub created_at: i64,
 }
@@ -13,7 +13,7 @@ pub struct VoteEvent {
 #[derive(FromRow, Serialize, Deserialize, Debug)]
 pub struct Item {
     pub item_id: i32,
-    pub author_id: i32,
+    pub author_id: String,
     pub parent_id: Option<i32>,
     pub created_at: i64,
 }
