@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::{query_as, FromRow, Sqlite, Transaction};
 
 #[derive(FromRow, Serialize, Deserialize, Debug, Clone)]
-struct NewestItem {
-    pub item_id: i32,
-    pub created_at: i64,
+struct NewestStats {
+    item_id: i32,
+    created_at: i64,
 }
 
-impl Score for Observation<NewestItem> {
+impl Score for Observation<NewestStats> {
     fn score(&self) -> f32 {
         let age_hours = (self.sample_time - self.data.created_at) as f32 / 60.0 / 60.0;
         1.0 / age_hours
@@ -21,7 +21,7 @@ impl Score for Observation<NewestItem> {
 
 pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredItem>, AppError> {
     let sample_time = now_utc_millis();
-    let scored_items: Vec<ScoredItem> = query_as::<_, NewestItem>(
+    let scored_items: Vec<ScoredItem> = query_as::<_, NewestStats>(
         "
         select
               item_id
