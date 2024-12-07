@@ -3,6 +3,7 @@ use crate::common::error::AppError;
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use tracing::error;
 
 pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
     let scheduler = JobScheduler::new().await?;
@@ -24,7 +25,7 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
                     }
                     Err(e) => {
                         tx.rollback().await.unwrap();
-                        eprintln!("Error sampling ranks: {:?}", e);
+                        error!("Error sampling ranks: {:?}", e);
                     }
                 };
             })

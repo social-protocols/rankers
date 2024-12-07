@@ -7,6 +7,7 @@ use anyhow::Result;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, query_scalar, FromRow, Sqlite, Transaction};
+use tracing::info;
 
 #[derive(FromRow, Serialize, Deserialize, Debug)]
 pub struct QnStats {
@@ -62,13 +63,13 @@ pub async fn sample_ranks(
     // TODO: come up with a better initialization logic
 
     let sample_time = now_utc_millis();
-    println!("Sampling stats at: {:?}", sample_time);
+    info!("Sampling stats at: {:?}", sample_time);
 
     let any_items_exist: bool = sqlx::query_scalar("select exists (select 1 from item)")
         .fetch_one(&mut **tx)
         .await?;
     if !any_items_exist {
-        println!("Waiting for items to rank - Skipping...");
+        info!("Waiting for items to rank - Skipping...");
         return Ok(axum::http::StatusCode::OK);
     }
 
@@ -76,7 +77,7 @@ pub async fn sample_ranks(
         .fetch_one(&mut **tx)
         .await?;
     if !any_ranks_recorded {
-        println!("No ranks recorded yet - Initializing...");
+        info!("No ranks recorded yet - Initializing...");
         sqlx::query(
             "
             with items_in_pool as (
