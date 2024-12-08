@@ -13,8 +13,8 @@ pub struct VoteEvent {
 #[derive(FromRow, Serialize, Deserialize, Debug)]
 pub struct Item {
     pub item_id: i32,
-    pub author_id: String,
     pub parent_id: Option<i32>,
+    pub author_id: String,
     pub created_at: i64,
 }
 

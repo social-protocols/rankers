@@ -1,6 +1,6 @@
 # Notes
 
-### Problem
+### Problem: Adding More Ranking Pages
 
 We want to make the scheme flexible enough so that users of the service can implement different ranking pages.
 However, we also need to know the rank history for each page for the quality news ranking algorithm.

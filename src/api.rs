@@ -19,15 +19,15 @@ pub async fn register_item(
         "
         insert into item (
               item_id
-            , author_id
             , parent_id
+            , author_id
             , created_at
         ) values (?, ?, ?, ?)
         ",
     )
     .bind(payload.item_id)
-    .bind(payload.author_id)
     .bind(payload.parent_id)
+    .bind(payload.author_id)
     .bind(payload.created_at)
     .execute(&pool)
     .await?;

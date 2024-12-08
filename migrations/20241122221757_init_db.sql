@@ -89,10 +89,10 @@ select
   , coalesce(cast(uast.upvotes_at_sample_time as real) / suat.sitewide_upvotes, 0) as upvotes_share
 from rank_history rh
 left outer join upvotes_at_sample_time uast
-on rh.item_id = uast.item_id
-and rh.sample_time = uast.sample_time
+  on rh.item_id = uast.item_id
+  and rh.sample_time = uast.sample_time
 join sitewide_upvotes_at_sample_time suat
-on rh.sample_time = suat.sample_time;
+  on rh.sample_time = suat.sample_time;
 
 -- TODO: This model only takes rank_top into account. We need a model that incorporates all ranks
 create view if not exists upvote_share as
