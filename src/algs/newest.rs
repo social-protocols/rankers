@@ -1,6 +1,6 @@
 use crate::common::{
     error::AppError,
-    model::{Observation, Score, ScoredItem},
+    model::{Observation, RankingPage, Score, ScoredItem},
 };
 use crate::util::now_utc_millis;
 use serde::{Deserialize, Serialize};
@@ -38,8 +38,11 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
         sample_time,
         data: item.clone(),
     })
-    .map(|obs| ScoredItem {
+    .enumerate()
+    .map(|(i, obs)| ScoredItem {
         item_id: obs.data.item_id,
+        rank: i as i32 + 1,
+        page: RankingPage::Newest,
         score: obs.score(),
     })
     .collect();

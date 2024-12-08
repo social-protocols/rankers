@@ -11,7 +11,7 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
     let job_pool = Arc::clone(&pool);
 
     // TODO: change to once a minute for production
-    let cron_expression = "1/12 * * * * *";
+    let cron_expression = "1/5 * * * * *";
 
     scheduler
         .add(Job::new_async(cron_expression, move |_uuid, _l| {
@@ -19,7 +19,7 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
             Box::pin(async move {
                 let mut tx: Transaction<'_, Sqlite> =
                     job_pool.begin().await.expect("Couldn't create transaction");
-                match quality_news::sample_ranks(&mut tx).await {
+                match quality_news::sample_stats(&mut tx).await {
                     Ok(_) => {
                         tx.commit().await.unwrap();
                     }

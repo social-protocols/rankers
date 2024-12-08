@@ -10,6 +10,8 @@ create table if not exists vote_event (
   , item_id       integer not null references item(item_id)
   , user_id       text    not null
   , vote          integer not null
+  , rank          integer
+  , page          text
   , created_at    integer not null default (unixepoch('subsec') * 1000)
 ) strict;
 
@@ -48,6 +50,7 @@ create table if not exists stats_history (
     item_id          integer not null references item(item_id)
   , sample_time      integer not null
   , upvotes          integer not null
+  , upvote_share     real    not null
   , expected_upvotes real    not null
 ) strict;
 

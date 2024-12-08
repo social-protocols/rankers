@@ -1,6 +1,6 @@
 use crate::common::{
     error::AppError,
-    model::{Observation, Score, ScoredItem},
+    model::{Observation, RankingPage, Score, ScoredItem},
 };
 use crate::util::now_utc_millis;
 use serde::{Deserialize, Serialize};
@@ -65,8 +65,11 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
 
     let scored_items: Vec<ScoredItem> = stats_observations
         .into_iter()
-        .map(|item| ScoredItem {
+        .enumerate()
+        .map(|(i, item)| ScoredItem {
             item_id: item.data.item_id,
+            rank: i as i32 + 1,
+            page: RankingPage::HackerNews,
             score: item.score(),
         })
         .collect();

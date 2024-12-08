@@ -1,6 +1,6 @@
 use crate::common::{
     error::AppError,
-    model::{Observation, Score, ScoredItem},
+    model::{Observation, RankingPage, Score, ScoredItem},
 };
 use crate::util::now_utc_millis;
 use anyhow::Result;
@@ -14,6 +14,7 @@ pub struct QnStats {
     pub item_id: i32,
     pub submission_time: i64,
     pub upvotes: i32,
+    pub upvote_share: f32,
     pub expected_upvotes: f32,
 }
 
@@ -43,13 +44,15 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
         .fetch_one(&mut **tx)
         .await?;
 
-    let current_stats = get_stats_observations(tx, latest_sample_time).await?;
-
-    let scored_items: Vec<ScoredItem> = current_stats
+    let scored_items: Vec<ScoredItem> = get_stats_observations(tx, latest_sample_time)
+        .await?
         .into_iter()
         .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
-        .map(|item| ScoredItem {
+        .enumerate()
+        .map(|(i, item)| ScoredItem {
             item_id: item.data.item_id,
+            rank: i as i32 + 1,
+            page: RankingPage::QualityNews,
             score: item.score(),
         })
         .collect();
@@ -57,7 +60,7 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
     Ok(scored_items)
 }
 
-pub async fn sample_ranks(
+pub async fn sample_stats(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<axum::http::StatusCode, AppError> {
     // TODO: come up with a better initialization logic
@@ -83,7 +86,7 @@ pub async fn sample_ranks(
             with items_in_pool as (
                 select
                       item_id
-                    , unixepoch('subsec') * 1000 as sample_time
+                    , ? as sample_time
                     , row_number() over (order by created_at desc) as rank_top
                     , row_number() over (order by created_at desc) as rank_new
                 from item
@@ -93,6 +96,7 @@ pub async fn sample_ranks(
             select * from items_in_pool
             ",
         )
+        .bind(sample_time)
         .fetch_all(&mut **tx)
         .await?;
         return Ok(axum::http::StatusCode::OK);
@@ -128,6 +132,7 @@ async fn calc_and_insert_newest_stats(
         let new_upvotes = get_current_upvote_count(&mut *tx, s.data.item_id).await?;
         let new_expected_upvotes =
             s.data.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
+        let actual_upvote_share = new_upvotes as f32 / sitewide_upvotes as f32;
 
         let new_stat = Observation {
             sample_time,
@@ -135,6 +140,7 @@ async fn calc_and_insert_newest_stats(
                 item_id: s.data.item_id,
                 submission_time: s.data.submission_time,
                 upvotes: new_upvotes,
+                upvote_share: actual_upvote_share,
                 expected_upvotes: new_expected_upvotes,
             },
         };
@@ -145,13 +151,15 @@ async fn calc_and_insert_newest_stats(
                   item_id
                 , sample_time
                 , upvotes
+                , upvote_share
                 , expected_upvotes
-            ) values (?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?)
             ",
         )
         .bind(new_stat.data.item_id)
         .bind(new_stat.sample_time)
         .bind(new_stat.data.upvotes)
+        .bind(new_stat.data.upvote_share)
         .bind(new_stat.data.expected_upvotes)
         .execute(&mut **tx)
         .await?;
@@ -254,6 +262,7 @@ async fn get_stats_observations(
                   iip.item_id
                 , iip.created_at as submission_time
                 , coalesce(sast.upvotes, 0) as upvotes
+                , coalesce(sast.upvote_share, 0.0) as upvote_share
                 , coalesce(sast.expected_upvotes, 0.0) as expected_upvotes
             from items_in_pool iip
             left outer join stats_at_sample_time sast
@@ -263,6 +272,7 @@ async fn get_stats_observations(
               item_id
             , submission_time
             , upvotes
+            , upvote_share
             , expected_upvotes
         from stats
         order by upvotes desc
@@ -278,6 +288,7 @@ async fn get_stats_observations(
             item_id: stat.item_id,
             submission_time: stat.submission_time,
             upvotes: stat.upvotes,
+            upvote_share: stat.upvote_share,
             expected_upvotes: stat.expected_upvotes,
         },
     })
