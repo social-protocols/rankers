@@ -10,6 +10,7 @@ mod database;
 mod http_server;
 mod scheduler;
 mod util;
+mod probability;
 
 #[tokio::main]
 async fn main() -> Result<(), common::error::AppError> {

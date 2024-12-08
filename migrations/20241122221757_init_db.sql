@@ -5,6 +5,67 @@ create table if not exists item (
   , created_at integer not null default (unixepoch('subsec') * 1000)
 ) strict;
 
+create table lineage (
+    ancestor_id   integer not null references item(item_id)
+  , descendant_id integer not null references item(item_id)
+  , separation    integer not null
+  , primary key(ancestor_id, descendant_id)
+) strict;
+
+create trigger after_insert_item
+after insert on item when new.parent_id is not null
+begin
+    -- Insert a lineage record for parent
+    insert into lineage (
+          ancestor_id
+        , descendant_id
+        , separation
+    )
+    values(
+          new.parent_id
+        , new.item_id
+        , 1
+    )
+    on conflict do nothing;
+
+    -- Insert a lineage record for all ancestors of this parent
+    insert into lineage
+    select
+          ancestor_id
+        , new.item_id as descendant_id
+        , 1 + separation as separation
+    from lineage ancestor
+    where ancestor.descendant_id = new.parent_id;
+
+    -- It is possible that this item is inserted *after* some of its children
+    -- In that case, the ancestry for those children (and their children) will
+    -- be incomplete.
+
+    -- Insert a lineage record for all children joined to all ancestors
+    insert into lineage
+    select
+            ancestor.ancestor_id
+          , child.item_id descendant_id
+          , ancestor.separation + 1 as separation
+    from item child
+    join lineage ancestor
+         on ancestor.descendant_id = new.item_id
+    where child.parent_id = new.item_id;
+
+    -- Insert a lineage record for all descendants joined to all ancestors
+    insert into Lineage
+    select
+            ancestor.ancestor_id
+          , descendant.descendant_id
+          , ancestor.separation + descendant.separation + 1 as separation
+    from item child
+    join Lineage descendant
+        on descendant.ancestor_id = child.item_id
+    join Lineage ancestor
+        on ancestor.descendant_id = new.item_id
+    where child.parent_id = new.item_id;
+end;
+
 create table if not exists vote_event (
     vote_event_id integer not null primary key autoincrement
   , item_id       integer not null references item(item_id)
