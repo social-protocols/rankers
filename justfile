@@ -20,4 +20,4 @@ db-migrate:
 
 # Drop the database and recreate it, running all migrations
 db-reset:
-  sqlx database reset
+  sqlx database reset -y
