@@ -1,15 +1,8 @@
 using HTTP
 using JSON
 
-function send_item!(
-    item_buf::Array{Int},
-    author_id::String,
-    host::String,
-    endpoint::String,
-    comment_probability::Float64,
-)
-    (item_id, parent_id) =
-        isempty(item_buf) ? (1, nothing) : (maximum(item_buf) + 1, rand(item_buf))
+function send_item!(model::Model, author_id::String, parent_id::Union{Int,Nothing})
+    item_id = isempty(model.items) ? 1 : maximum(model.items) + 1
 
     item = Dict(
         "item_id" => item_id,
@@ -21,20 +14,16 @@ function send_item!(
 
     println("Creating item: ", item_id, "...")
 
-    HTTP.post(host_url * endpoint, headers, body = JSON.json(item))
+    response =
+        HTTP.post(model.host_url * model.api[:items], headers, body = JSON.json(item))
+    println(response)
 
-    push!(item_buf, item_id)
+    push!(model.items, item_id)
 end
 
-function send_vote_event!(
-    vote_event_buf::Array{Int},
-    item_buf::Array{Int},
-    user_id::String,
-    host::String,
-    endpoint::String,
-)
-    vote_event_id = isempty(vote_event_buf) ? 1 : maximum(vote_event_buf) + 1
-    item_id = rand(item_buf)
+function send_vote_event!(model::Model, user_id::String)
+    vote_event_id = isempty(model.vote_events) ? 1 : maximum(model.vote_events) + 1
+    item_id = rand(model.items)
 
     vote_event = Dict(
         "vote_event_id" => vote_event_id,
@@ -47,13 +36,18 @@ function send_vote_event!(
 
     println("Creating vote event: ", vote_event_id, "...")
 
-    HTTP.post(host_url * endpoint, headers, body = JSON.json(vote_event))
+    response = HTTP.post(
+        model.host_url * model.api[:vote_events],
+        headers,
+        body = JSON.json(vote_event),
+    )
+    println(response)
 
-    push!(vote_event_buf, vote_event_id)
+    push!(model.vote_events, vote_event_id)
 end
 
-function get_ranking(host::String, endpoint::String)
-    response = HTTP.get(host * endpoint)
+function get_ranking(model::Model, endpoint::String)
+    response = HTTP.get(model.host_url * endpoint)
     response_json = JSON.parse(String(response.body))
     return response_json
 end

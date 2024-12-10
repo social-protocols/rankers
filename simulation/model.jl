@@ -10,13 +10,13 @@ struct Agent
 end
 
 Base.@kwdef struct Model
-    items::Int[]
-    vote_events::Int[]
+    items::Array{Int}
+    vote_events::Array{Int}
     host_url::String
     api::Dict{Symbol,String}
     max_votes_per_agent::Int
     ranking_page_distribution::Dict{Int,RankingPage}
-    agents::Agent[]
+    agents::Array{Agent}
 end
 
 function setup_model(
@@ -25,8 +25,9 @@ function setup_model(
     max_votes_per_agent::Int,
     ranking_page_distribution::Dict{Int,RankingPage},
     n_agents::Int,
+    n_seed_posts::Int,
 )
-    return Model(
+    model = Model(
         items = Int[],
         vote_events = Int[],
         host_url = host_url,
@@ -35,6 +36,15 @@ function setup_model(
         ranking_page_distribution = ranking_page_distribution,
         agents = [Agent(i) for i in collect(string.(1:n_agents))],
     )
+    seed_posts!(model, n_seed_posts)
+    return model
+end
+
+function seed_posts!(model::Model, n::Int)
+    seed_agents = rand(model.agents, n)
+    for a in seed_agents
+        send_item!(model, a.user_id, nothing)
+    end
 end
 
 function step!(model::Model)
@@ -42,40 +52,41 @@ function step!(model::Model)
         # choose and request page to look at
         looking_at_page = choose_ranking_page(model)
         endpoint = if looking_at_page == 1
-            endpoints[:rankings_hn]
+            model.api[:rankings_hn]
         elseif looking_at_page == 2
-            endpoints[:rankings_qn]
+            model.api[:rankings_qn]
         else
-            endpoints[:rankings_newest]
+            model.api[:rankings_newest]
         end
-        received_ranking = get_ranking(model.host_url, endpoint)
+        received_ranking = get_ranking(model, endpoint)
 
-        # cast votes
         n_votes_cast = 0
         for r in received_ranking
-            if n_votes_cast >= model.max_votes_per_agent
-                break
-            end
-            if rand() < vote_prob_at_rank(r["rank"], length(received_ranks))
-                send_vote_event!(
-                    model.vote_events,
-                    model.items,
-                    a.user_id,
-                    model.host,
-                    endpoint,
-                )
+            # cast votes
+            if (n_votes_cast <= model.max_votes_per_agent) &
+               (rand() < vote_prob_at_rank(r["rank"], length(received_ranking)))
+                send_vote_event!(model, a.user_id)
                 n_votes_cast += 1
+            end
+
+            # comment on stories
+            if rand() < 0.0005 # TODO
+                send_item!(model, a.user_id, r["item_id"])
             end
         end
 
-        # comment on stories
-
         # create stories
+        for i = 1:3 # TODO
+            if rand() < 0.0005
+                send_item!(model, a.user_id, nothing)
+            end
+        end
+
+        sleep(0.1)
     end
 end
 
 function run!(model::Model, steps::Int)
-    model = setup_model(TODO)
     for i = 1:steps
         step!(model)
     end
@@ -84,7 +95,7 @@ end
 function choose_ranking_page(model::Model)
     dist = model.ranking_page_distribution
     page_keys = sort(collect(keys(dist)))
-    dist = Categorical([model.dist[key].traffic_share for key in page_keys])
+    dist = Categorical([dist[key].traffic_share for key in page_keys])
     sample = rand(dist)
     return model.ranking_page_distribution[sample]
 end
