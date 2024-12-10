@@ -1,30 +1,27 @@
-use crate::algs::quality_news::model::{ItemWithRanks, QnStats};
+use crate::algs::quality_news::model::{ItemWithRanks, QnSampleInterval, QnStats};
 use crate::common::error::AppError;
-use crate::common::model::{Item, Observation};
+use crate::common::model::Item;
 use sqlx::{query, query_as, query_scalar, Sqlite, Transaction};
 
-pub async fn get_current_upvote_count(
+pub async fn insert_sample_interval(
     tx: &mut Transaction<'_, Sqlite>,
-    item_id: i32,
-) -> Result<i32, AppError> {
-    let upvote_count: i32 = query_scalar(
+    start_time: i64,
+) -> Result<QnSampleInterval, AppError> {
+    let sample_interval: QnSampleInterval = query_as(
         "
-        select count(*)
-        from item_pool ip
-        join vote v
-        on ip.item_id = v.item_id
-        where vote = 1
-        and ip.item_id = ?
+        insert into qn_sample_interval
+        values (?)
+        returning *
         ",
     )
-    .bind(item_id)
+    .bind(start_time)
     .fetch_one(&mut **tx)
     .await?;
 
-    Ok(upvote_count)
+    Ok(sample_interval)
 }
 
-pub async fn get_sitewide_new_upvotes(
+pub async fn get_sitewide_upvotes_in_interval(
     tx: &mut Transaction<'_, Sqlite>,
     sample_time: i64,
     previous_sample_time: i64,
@@ -34,7 +31,7 @@ pub async fn get_sitewide_new_upvotes(
         select count(*)
         from vote
         where vote = 1
-        and created_at < ?
+        and created_at <= ?
         and created_at > ?
         ",
     )
@@ -46,66 +43,53 @@ pub async fn get_sitewide_new_upvotes(
     Ok(sitewide_upvotes)
 }
 
-pub async fn get_items_in_pool(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<Item>, AppError> {
-    let items: Vec<Item> = query_as("select * from item_pool")
-        .fetch_all(&mut **tx)
-        .await?;
+#[allow(dead_code)]
+pub async fn get_item_pool(
+    tx: &mut Transaction<'_, Sqlite>,
+    sample_time: i64,
+) -> Result<Vec<Item>, AppError> {
+    let items: Vec<Item> = query_as(
+        "
+        select *
+        from item
+        where created_at <= ?
+        order by created_at desc
+        limit 1500;
+        ",
+    )
+    .bind(sample_time)
+    .fetch_all(&mut **tx)
+    .await?;
 
     Ok(items)
 }
 
 // TODO: create poisson regression model to estimate upvote share
+#[allow(dead_code)]
 pub fn get_expected_upvote_share(n_items: i32) -> f32 {
     1.0 / n_items as f32
 }
 
-pub async fn insert_stats_observations(
-    tx: &mut Transaction<'_, Sqlite>,
-    stats: &Vec<Observation<QnStats>>,
-) -> Result<axum::http::StatusCode, AppError> {
-    for stat in stats {
-        query(
-            "
-            insert into stats_history (
-                  item_id
-                , sample_time
-                , upvotes
-                , upvote_share
-                , expected_upvotes
-            ) values (?, ?, ?, ?, ?)
-            ",
-        )
-        .bind(stat.data.item_id)
-        .bind(stat.sample_time)
-        .bind(stat.data.upvotes)
-        .bind(stat.data.upvote_share)
-        .bind(stat.data.expected_upvotes)
-        .execute(&mut **tx)
-        .await?;
-    }
-
-    Ok(axum::http::StatusCode::OK)
-}
-
 pub async fn insert_rank_observations(
     tx: &mut Transaction<'_, Sqlite>,
-    rank_observations: &Vec<Observation<ItemWithRanks>>,
+    ranked_items: &Vec<ItemWithRanks>,
+    sample_interval: &QnSampleInterval,
 ) -> Result<axum::http::StatusCode, AppError> {
-    for r in rank_observations {
+    for r in ranked_items {
         query(
             "
             insert into rank_history (
                   item_id
-                , sample_time
+                , interval_id
                 , rank_top
                 , rank_new
             ) values (?, ?, ?, ?)
             ",
         )
-        .bind(r.data.item_id)
-        .bind(r.sample_time)
-        .bind(r.data.rank_top)
-        .bind(r.data.rank_new)
+        .bind(r.item_id)
+        .bind(sample_interval.interval_id)
+        .bind(r.rank_top)
+        .bind(r.rank_new)
         .execute(&mut **tx)
         .await?;
     }
@@ -113,53 +97,55 @@ pub async fn insert_rank_observations(
     Ok(axum::http::StatusCode::OK)
 }
 
-pub async fn get_stats(
+pub async fn get_latest_sample_interval(
     tx: &mut Transaction<'_, Sqlite>,
-    sample_time: i64,
-) -> Result<Vec<Observation<QnStats>>, AppError> {
-    let stats_observations = query_as::<_, QnStats>(
+) -> Result<QnSampleInterval, AppError> {
+    let latest_interval: QnSampleInterval = query_as(
         "
-        with stats_at_sample_time as (
-            select *
-            from stats_history
-            where sample_time = ?
+        select *
+        from qn_sample_interval
+        where interval_id = (
+            selectm max(interval_id)
+            from qn_sample_interval
         )
-        , stats as (
-            select
-                  ip.item_id
-                , ip.created_at as submission_time
-                , coalesce(sast.upvotes, 0) as upvotes
-                , coalesce(sast.upvote_share, 0.0) as upvote_share
-                , coalesce(sast.expected_upvotes, 0.0) as expected_upvotes
-            from item_pool ip
-            left outer join stats_at_sample_time sast
-            on ip.item_id = sast.item_id
-        )
-        select
-              item_id
-            , submission_time
-            , upvotes
-            , upvote_share
-            , expected_upvotes
-        from stats
-        order by upvotes desc
         ",
     )
-    .bind(sample_time)
-    .fetch_all(&mut **tx)
-    .await?
-    .into_iter()
-    .map(|stat| Observation {
-        sample_time,
-        data: QnStats {
-            item_id: stat.item_id,
-            submission_time: stat.submission_time,
-            upvotes: stat.upvotes,
-            upvote_share: stat.upvote_share,
-            expected_upvotes: stat.expected_upvotes,
-        },
-    })
-    .collect();
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(latest_interval)
+}
 
-    Ok(stats_observations)
+pub async fn get_stats_in_interval(
+    tx: &mut Transaction<'_, Sqlite>,
+    start_time: i64,
+    sample_time: i64,
+) -> Result<Vec<QnStats>, AppError> {
+    let sitewide_upvotes = get_sitewide_upvotes_in_interval(tx, start_time, sample_time).await?;
+
+    let stats = query_as::<_, QnStats>(
+        "
+        with upvotes_by_item_in_interval as (
+            select item_id, count(*) as upvotes
+            from vote
+            where created_at > ?
+            and created_at <= ?
+        )
+        select
+            i.item_id
+            , i.created_at
+            , ubii.upvotes
+            , ubii.upvotes / ?
+        from item i
+        left outer join upvotes_by_item_in_interval ubii
+        where i.created_at > ?
+        and i.created_at <= ?
+        ",
+    )
+    .bind(start_time)
+    .bind(sample_time)
+    .bind(sitewide_upvotes as f32)
+    .fetch_all(&mut **tx)
+    .await?;
+
+    Ok(stats)
 }

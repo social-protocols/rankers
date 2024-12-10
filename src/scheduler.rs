@@ -19,13 +19,13 @@ pub async fn start_scheduler(pool: Arc<SqlitePool>) -> Result<(), AppError> {
             Box::pin(async move {
                 let mut tx: Transaction<'_, Sqlite> =
                     job_pool.begin().await.expect("Couldn't create transaction");
-                match quality_news::sample_stats(&mut tx).await {
+                match quality_news::record_sample(&mut tx).await {
                     Ok(_) => {
                         tx.commit().await.unwrap();
                     }
                     Err(e) => {
                         tx.rollback().await.unwrap();
-                        error!("Error sampling ranks: {:?}", e);
+                        error!("Error recording sample: {:?}", e);
                     }
                 };
             })

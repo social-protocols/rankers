@@ -1,6 +1,6 @@
 use crate::common::{
     error::AppError,
-    model::{Observation, RankingPage, Score, ScoredItem},
+    model::{RankingPage, ScoredItem},
     time::now_utc_millis,
 };
 use anyhow::Result;
@@ -22,152 +22,111 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
         return Ok(vec![]);
     }
 
-    let latest_sample_time: i64 = query_scalar("select max(sample_time) from stats_history")
-        .fetch_one(&mut **tx)
-        .await?;
+    let now = now_utc_millis();
 
-    let scored_items: Vec<ScoredItem> = repository::get_stats(tx, latest_sample_time)
-        .await?
-        .into_iter()
-        .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
-        .enumerate()
-        .map(|(i, item)| ScoredItem {
-            item_id: item.data.item_id,
-            rank: i as i32 + 1,
-            page: RankingPage::QualityNews,
-            score: item.score(),
-        })
-        .collect();
+    let sampling_interval = repository::get_latest_sample_interval(tx).await?;
+
+    let scored_items: Vec<ScoredItem> =
+        repository::get_stats_in_interval(tx, sampling_interval.start_time, now)
+            .await?
+            .into_iter()
+            // TODO: eventually sort by score, not upvotes:
+            // .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
+            .sorted_by(|a, b| a.upvotes.partial_cmp(&b.upvotes).unwrap().reverse())
+            .enumerate()
+            .map(|(i, item)| ScoredItem {
+                item_id: item.item_id,
+                rank: i as i32 + 1,
+                page: RankingPage::QualityNews,
+                score: item.upvotes as f32,
+            })
+            .collect();
 
     Ok(scored_items)
 }
 
-pub async fn sample_stats(
+pub async fn record_sample(
     tx: &mut Transaction<'_, Sqlite>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    if let Err(_) = query_scalar::<_, i32>("select 1 from item limit 1")
-        .fetch_one(&mut **tx)
-        .await
-    {
+    if let Err(_) = check_items_exist(tx).await {
         info!("Waiting for items to rank - Skipping...");
         return Ok(axum::http::StatusCode::OK);
     }
 
     let sample_time = now_utc_millis();
-    info!("Sampling stats at: {:?}", sample_time);
+    info!("Recording quality news sample at: {:?}", sample_time);
 
-    match query_scalar("select max(sample_time) from stats_history")
-        .fetch_optional(&mut **tx)
-        .await?
-    {
-        // initialize stats and ranks histories
-        None => {
-            let items = repository::get_items_in_pool(tx).await?;
-
-            let mut initial_stats = Vec::<Observation<QnStats>>::new();
-            for item in &items {
-                let init_observation = Observation {
-                    sample_time,
-                    data: QnStats {
-                        item_id: item.item_id,
-                        submission_time: item.created_at,
-                        upvotes: repository::get_current_upvote_count(tx, item.item_id).await?,
-                        upvote_share: 0.0,
-                        expected_upvotes: 0.0,
-                    },
-                };
-                initial_stats.push(init_observation);
-            }
-            repository::insert_stats_observations(tx, &initial_stats).await?;
-
-            let initial_ranks = calc_updated_ranks(&initial_stats);
-            repository::insert_rank_observations(tx, &initial_ranks).await?;
-        }
-        // update stats and ranks histories
-        Some(previous_sample_time) => {
-            let previous_stats: Vec<Observation<QnStats>> =
-                repository::get_stats(&mut *tx, previous_sample_time).await?;
-
-            let n_items = previous_stats.len() as i32;
-
-            let sitewide_upvotes =
-                repository::get_sitewide_new_upvotes(&mut *tx, sample_time, previous_sample_time)
-                    .await?;
-
-            let mut updated_stats = Vec::<Observation<QnStats>>::new();
-            for stat in previous_stats {
-                let updated_stat: Observation<QnStats> =
-                    calc_updated_stats(tx, sample_time, stat, sitewide_upvotes, n_items).await?;
-                updated_stats.push(updated_stat);
-            }
-            repository::insert_stats_observations(tx, &updated_stats).await?;
-
-            let new_ranks = calc_updated_ranks(&updated_stats);
-            repository::insert_rank_observations(tx, &new_ranks).await?;
-        }
+    if let Err(_) = check_sampling_initialized(tx).await {
+        info!("Initializing quality news sampling...");
+        let sample_interval = repository::insert_sample_interval(tx, sample_time).await?;
+        let stats = repository::get_stats_in_interval(tx, 0, sample_time).await?;
+        let ranks = calc_ranks(&stats);
+        repository::insert_rank_observations(tx, &ranks, &sample_interval).await?;
+        return Ok(axum::http::StatusCode::OK);
     }
+
+    let sampling_interval = repository::get_latest_sample_interval(tx).await?;
+
+    // TODO: use this item pool to get stats
+    // let item_pool = repository::get_item_pool(tx, sample_time).await?;
+
+    let stats =
+        repository::get_stats_in_interval(tx, sampling_interval.start_time, sample_time).await?;
+    // TODO: predict expected upvote share -> use in ranking
+
+    let ranks = calc_ranks(&stats);
+    let next_sample_interval = repository::insert_sample_interval(tx, sample_time).await?;
+    repository::insert_rank_observations(tx, &ranks, &next_sample_interval).await?;
 
     Ok(axum::http::StatusCode::OK)
 }
 
-async fn calc_updated_stats(
+async fn check_items_exist(
     tx: &mut Transaction<'_, Sqlite>,
-    sample_time: i64,
-    previous_stat: Observation<QnStats>,
-    sitewide_upvotes: i32,
-    n_items: i32,
-) -> Result<Observation<QnStats>, AppError> {
-    if sitewide_upvotes == 0 {
-        return Ok(Observation {
-            sample_time,
-            data: QnStats {
-                item_id: previous_stat.data.item_id,
-                submission_time: previous_stat.data.submission_time,
-                upvotes: previous_stat.data.upvotes,
-                upvote_share: 0.0,
-                expected_upvotes: 0.0,
-            },
-        });
-    }
+) -> Result<axum::http::StatusCode, AppError> {
+    query_scalar::<_, i32>("select 1 from item limit 1")
+        .fetch_one(&mut **tx)
+        .await?;
 
-    let expected_upvote_share = repository::get_expected_upvote_share(n_items);
-    let new_upvotes = repository::get_current_upvote_count(tx, previous_stat.data.item_id).await?;
-    let new_expected_upvotes =
-        previous_stat.data.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
-    let actual_upvote_share =
-        (new_upvotes - previous_stat.data.upvotes) as f32 / sitewide_upvotes as f32;
-
-    Ok(Observation {
-        sample_time,
-        data: QnStats {
-            item_id: previous_stat.data.item_id,
-            submission_time: previous_stat.data.submission_time,
-            upvotes: new_upvotes,
-            upvote_share: actual_upvote_share,
-            expected_upvotes: new_expected_upvotes,
-        },
-    })
+    return Ok(axum::http::StatusCode::OK);
 }
 
-fn calc_updated_ranks(stats: &Vec<Observation<QnStats>>) -> Vec<Observation<ItemWithRanks>> {
+async fn check_sampling_initialized(
+    tx: &mut Transaction<'_, Sqlite>,
+) -> Result<axum::http::StatusCode, AppError> {
+    query_scalar::<_, i32>("select 1 from qn_sample_interval limit 1")
+        .fetch_one(&mut **tx)
+        .await?;
+
+    return Ok(axum::http::StatusCode::OK);
+}
+
+// async fn calc_stats(
+//     tx: &mut Transaction<'_, Sqlite>,
+//     sample_time: i64,
+//     previous_stat: Observation<QnStats>,
+//     sitewide_upvotes: i32,
+// ) -> Result<Observation<QnStats>, AppError> {
+//     // TODO: move to expected_upvote_share calculation
+//     // n_items: i32,
+//     // let expected_upvote_share = repository::get_expected_upvote_share(n_items);
+//     // let new_expected_upvotes =
+//     //     previous_stat.data.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
+// }
+
+fn calc_ranks(stats: &Vec<QnStats>) -> Vec<ItemWithRanks> {
     stats
         .into_iter()
-        .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
+        // TODO
+        // .sorted_by(|a, b| a.score().partial_cmp(&b.score()).unwrap().reverse())
+        .sorted_by(|a, b| a.upvotes.partial_cmp(&b.upvotes).unwrap().reverse())
         .enumerate()
-        .sorted_by(|(_, a), (_, b)| {
-            a.data
-                .submission_time
-                .partial_cmp(&b.data.submission_time)
-                .unwrap()
-        })
+        .sorted_by(|(_, a), (_, b)| a.submission_time.partial_cmp(&b.submission_time).unwrap())
         .enumerate()
-        .map(|(rank_new, (rank_top, stat))| Observation {
-            sample_time: stat.sample_time,
-            data: ItemWithRanks {
-                item_id: stat.data.item_id,
-                rank_top: rank_top as i32 + 1,
-                rank_new: rank_new as i32 + 1,
-            },
+        .map(|(rank_new, (rank_top, item))| ItemWithRanks {
+            item_id: item.item_id,
+            rank_top: rank_top as i32 + 1,
+            rank_new: rank_new as i32 + 1,
         })
         .collect()
 }

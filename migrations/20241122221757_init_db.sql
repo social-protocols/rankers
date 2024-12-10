@@ -46,20 +46,30 @@ begin
     , created_at    = new.created_at;
 end;
 
+create table if not exists qn_sample_interval {
+    interval_id integer not null primary key autoincrement
+  , start_time  integer not null
+}
+
 create table if not exists stats_history (
     item_id          integer not null references item(item_id)
-  , sample_time      integer not null
+  , interval_id      integer not null references qn_sample_interval(interval_id)
   , upvotes          integer not null
   , upvote_share     real    not null
-  , expected_upvotes real    not null
 ) strict;
 
 create table if not exists rank_history (
     item_id     integer not null
-  , sample_time integer not null
+  , interval_id integer not null references qn_sample_interval(interval_id)
   , rank_top    integer
   , rank_new    integer
 ) strict;
+
+create table if not exists expected_upvote_share_history (
+    item_id               integer not null
+  , interval_id           integer not null references qn_sample_interval(interval_id)
+  , expected_upvote_share real    not null
+)
 
 create view if not exists item_pool as
 select *
