@@ -19,18 +19,16 @@ include("util.jl")
 
 HOST_URL = "http://localhost:3000"
 ENDPOINTS = Dict(
-    :items => "/items",
-    :vote_events => "/vote_events",
-    :rankings_hn => "/rankings/hn",
-    :rankings_qn => "/rankings/qn",
-    :rankings_newest => "/rankings/newest",
+    Newest => "/rankings/newest",
+    HackerNews => "/rankings/hn",
+    QualityNews => "/rankings/qn",
 )
 RANKING_PAGE_DISTRIBUTION = Dict(
-    1 => RankingPage(HN, 0.45),
-    2 => RankingPage(QN, 0.45),
+    1 => RankingPage(HackerNews, 0.45),
+    2 => RankingPage(QualityNews, 0.45),
     3 => RankingPage(Newest, 0.1),
 )
 
 model = setup_model(HOST_URL, ENDPOINTS, 3, RANKING_PAGE_DISTRIBUTION, 100, 10)
 
-run!(model, 10)
+run!(model, 1)

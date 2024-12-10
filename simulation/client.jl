@@ -15,13 +15,12 @@ function send_item!(model::Model, author_id::String, parent_id::Union{Int,Nothin
 
     @info "Creating item: $item_id ..."
 
-    response =
-        HTTP.post(model.host_url * model.api[:items], headers, body = JSON.json(item))
+    response = HTTP.post(model.host_url * "/items", headers, body = JSON.json(item))
 
     push!(model.items, item_id)
 end
 
-function send_vote_event!(model::Model, user_id::String)
+function send_vote_event!(model::Model, user_id::String, rank::Int, page::RankingPageType)
     vote_event_id = isempty(model.vote_events) ? 1 : maximum(model.vote_events) + 1
     item_id = rand(model.items)
 
@@ -30,17 +29,16 @@ function send_vote_event!(model::Model, user_id::String)
         "item_id" => item_id,
         "user_id" => user_id,
         "vote" => 1,
+        "rank" => rank,
+        "page" => page,
         "created_at" => now_utc_millis(),
     )
     headers = Dict("Content-Type" => "application/json")
 
     @info "Creating vote event: $vote_event_id ..."
 
-    response = HTTP.post(
-        model.host_url * model.api[:vote_events],
-        headers,
-        body = JSON.json(vote_event),
-    )
+    response =
+        HTTP.post(model.host_url * "/vote_events", headers, body = JSON.json(vote_event))
 
     push!(model.vote_events, vote_event_id)
 end

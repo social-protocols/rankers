@@ -1,4 +1,4 @@
-@enum RankingPageType HN QN Newest
+@enum RankingPageType Newest QualityNews HackerNews
 
 struct RankingPage
     type::RankingPageType
@@ -13,7 +13,7 @@ Base.@kwdef struct Model
     items::Array{Int}
     vote_events::Array{Int}
     host_url::String
-    api::Dict{Symbol,String}
+    api::Dict{RankingPageType,String}
     max_votes_per_agent::Int
     ranking_page_distribution::Dict{Int,RankingPage}
     agents::Array{Agent}
@@ -21,7 +21,7 @@ end
 
 function setup_model(
     host_url::String,
-    api::Dict{Symbol,String},
+    api::Dict{RankingPageType,String},
     max_votes_per_agent::Int,
     ranking_page_distribution::Dict{Int,RankingPage},
     n_agents::Int,
@@ -37,35 +37,31 @@ function setup_model(
         agents = [Agent(i) for i in collect(string.(1:n_agents))],
     )
     seed_posts!(model, n_seed_posts)
+
     return model
 end
 
-function seed_posts!(model::Model, n::Int)
+function seed_posts!(model::Model, n::Int)::Model
     seed_agents = rand(model.agents, n)
     for a in seed_agents
         send_item!(model, a.user_id, nothing)
     end
+
+    return model
 end
 
-function step!(model::Model)
+function step!(model::Model)::Model
     for a in model.agents
         # choose and request page to look at
-        looking_at_page = choose_ranking_page(model)
-        endpoint = if looking_at_page == 1
-            model.api[:rankings_hn]
-        elseif looking_at_page == 2
-            model.api[:rankings_qn]
-        else
-            model.api[:rankings_newest]
-        end
-        received_ranking = get_ranking(model, endpoint)
+        ranking_page = choose_ranking_page(model)
+        received_ranking = get_ranking(model, model.api[ranking_page])
 
         n_votes_cast = 0
         for r in received_ranking
             # cast votes
             if (n_votes_cast <= model.max_votes_per_agent) &
                (rand() < vote_prob_at_rank(r["rank"], length(received_ranking)))
-                send_vote_event!(model, a.user_id)
+                send_vote_event!(model, a.user_id, r["rank"], ranking_page)
                 n_votes_cast += 1
             end
 
@@ -84,18 +80,23 @@ function step!(model::Model)
 
         sleep(0.3)
     end
+
+    return model
 end
 
-function run!(model::Model, steps::Int)
+function run!(model::Model, steps::Int)::Model
     for i = 1:steps
         step!(model)
     end
+
+    return model
 end
 
-function choose_ranking_page(model::Model)
-    dist = model.ranking_page_distribution
-    page_keys = sort(collect(keys(dist)))
-    dist = Categorical([dist[key].traffic_share for key in page_keys])
-    sample = rand(dist)
-    return model.ranking_page_distribution[sample]
+function choose_ranking_page(model::Model)::RankingPageType
+    page_dist = model.ranking_page_distribution
+    page_keys = sort(collect(keys(page_dist)))
+    dist = Categorical([page_dist[key].traffic_share for key in page_keys])
+    choice = rand(dist)
+
+    return page_dist[choice].type
 end
