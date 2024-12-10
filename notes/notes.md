@@ -9,3 +9,16 @@ However, we also need to know the rank history for each page for the quality new
 
 With that idea, we wouldn't have to persist rank history at all in the service database.
 We could get than information from the vote event log where the rank and page where the vote occurred is stored.
+
+### Problem: Estimate Expected Upvotes
+
+**Idea**
+
+rank sampling:
+
+- in each sampling interval (let's say every five minutes), track the rank history (e.g., every minute) -> create a rank profile for that interval
+
+upvote share prediction:
+
+- predict upvote share from rank profile
+- seeding: to enable quality news ranking, we need some time to gather data -> so at first, just set QN rank = HN rank -> do that for a while, then train the model to predict upvote share -> then the feedback loop works 
