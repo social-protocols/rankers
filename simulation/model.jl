@@ -70,19 +70,19 @@ function step!(model::Model)
             end
 
             # comment on stories
-            if rand() < 0.0005 # TODO
+            if rand() < 0.005 # TODO
                 send_item!(model, a.user_id, r["item_id"])
             end
         end
 
         # create stories
         for i = 1:3 # TODO
-            if rand() < 0.0005
+            if rand() < 0.005
                 send_item!(model, a.user_id, nothing)
             end
         end
 
-        sleep(0.1)
+        sleep(0.3)
     end
 end
 

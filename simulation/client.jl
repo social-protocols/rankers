@@ -1,5 +1,6 @@
 using HTTP
 using JSON
+using Logging
 
 function send_item!(model::Model, author_id::String, parent_id::Union{Int,Nothing})
     item_id = isempty(model.items) ? 1 : maximum(model.items) + 1
@@ -12,11 +13,10 @@ function send_item!(model::Model, author_id::String, parent_id::Union{Int,Nothin
     )
     headers = Dict("Content-Type" => "application/json")
 
-    println("Creating item: ", item_id, "...")
+    @info "Creating item: $item_id ..."
 
     response =
         HTTP.post(model.host_url * model.api[:items], headers, body = JSON.json(item))
-    println(response)
 
     push!(model.items, item_id)
 end
@@ -34,14 +34,13 @@ function send_vote_event!(model::Model, user_id::String)
     )
     headers = Dict("Content-Type" => "application/json")
 
-    println("Creating vote event: ", vote_event_id, "...")
+    @info "Creating vote event: $vote_event_id ..."
 
     response = HTTP.post(
         model.host_url * model.api[:vote_events],
         headers,
         body = JSON.json(vote_event),
     )
-    println(response)
 
     push!(model.vote_events, vote_event_id)
 end

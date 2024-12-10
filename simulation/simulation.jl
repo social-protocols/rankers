@@ -33,4 +33,4 @@ RANKING_PAGE_DISTRIBUTION = Dict(
 
 model = setup_model(HOST_URL, ENDPOINTS, 3, RANKING_PAGE_DISTRIBUTION, 100, 10)
 
-run!(model, 5)
+run!(model, 10)
