@@ -132,7 +132,11 @@ async fn calc_and_insert_newest_stats(
         let new_upvotes = get_current_upvote_count(&mut *tx, s.data.item_id).await?;
         let new_expected_upvotes =
             s.data.expected_upvotes + (expected_upvote_share * (sitewide_upvotes as f32));
-        let actual_upvote_share = new_upvotes as f32 / sitewide_upvotes as f32;
+        let actual_upvote_share = if sitewide_upvotes != 0 {
+            new_upvotes as f32 / sitewide_upvotes as f32
+        } else {
+            0.0
+        };
 
         let new_stat = Observation {
             sample_time,
