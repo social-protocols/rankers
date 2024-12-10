@@ -3,13 +3,20 @@ use dotenv::dotenv;
 use std::sync::Arc;
 use tracing_subscriber;
 
-mod algs;
+mod algs {
+    pub mod hacker_news;
+    pub mod newest;
+    pub mod quality_news;
+}
 mod api;
-mod common;
+mod common {
+    pub mod error;
+    pub mod model;
+    pub mod time;
+}
 mod database;
 mod http_server;
 mod scheduler;
-mod util;
 
 #[tokio::main]
 async fn main() -> Result<(), common::error::AppError> {

@@ -46,14 +46,18 @@ pub async fn register_vote_event(
             , item_id
             , user_id
             , vote
+            , rank
+            , page
             , created_at
-        ) values (?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?)
         ",
     )
     .bind(payload.vote_event_id)
     .bind(payload.item_id)
     .bind(payload.user_id)
     .bind(payload.vote)
+    .bind(payload.rank)
+    .bind(payload.page.as_ref().map(|p| p.to_string()))
     .bind(payload.created_at)
     .execute(&pool)
     .await?;

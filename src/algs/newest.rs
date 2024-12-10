@@ -1,8 +1,8 @@
 use crate::common::{
     error::AppError,
     model::{Observation, RankingPage, Score, ScoredItem},
+    time::now_utc_millis,
 };
-use crate::util::now_utc_millis;
 use serde::{Deserialize, Serialize};
 use sqlx::{query_as, FromRow, Sqlite, Transaction};
 

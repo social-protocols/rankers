@@ -61,6 +61,12 @@ create table if not exists rank_history (
   , rank_new    integer
 ) strict;
 
+create view if not exists item_pool as
+select *
+from item
+order by created_at desc
+limit 1500;
+
 create view if not exists upvotes_at_rank_history as
 with upvotes_at_sample_time as (
   select

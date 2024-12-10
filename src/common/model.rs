@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use sqlx::{Encode, FromRow};
+use std::fmt;
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
@@ -13,11 +14,22 @@ pub struct VoteEvent {
     pub created_at: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Encode)]
 pub enum RankingPage {
     Newest,
     QualityNews,
     HackerNews,
+}
+
+impl fmt::Display for RankingPage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let status_str = match self {
+            RankingPage::Newest => "newest",
+            RankingPage::QualityNews => "quality_news",
+            RankingPage::HackerNews => "hacker_news",
+        };
+        write!(f, "{}", status_str)
+    }
 }
 
 #[derive(FromRow, Serialize, Deserialize, Debug)]
