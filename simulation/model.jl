@@ -45,6 +45,7 @@ function seed_posts!(model::Model, n::Int)::Model
     seed_agents = rand(model.agents, n)
     for a in seed_agents
         send_item!(model, a.user_id, nothing)
+        sleep(0.1)
     end
 
     return model
@@ -62,12 +63,14 @@ function step!(model::Model)::Model
             if (n_votes_cast <= model.max_votes_per_agent) &
                (rand() < vote_prob_at_rank(r["rank"], length(received_ranking)))
                 send_vote_event!(model, a.user_id, r["rank"], ranking_page)
+                sleep(0.1)
                 n_votes_cast += 1
             end
 
             # comment on stories
             if rand() < 0.005 # TODO
                 send_item!(model, a.user_id, r["item_id"])
+                sleep(0.1)
             end
         end
 
@@ -75,6 +78,7 @@ function step!(model::Model)::Model
         for i = 1:3 # TODO
             if rand() < 0.005
                 send_item!(model, a.user_id, nothing)
+                sleep(0.1)
             end
         end
 

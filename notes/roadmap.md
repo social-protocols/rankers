@@ -35,4 +35,5 @@
 
 ## Simulation
 
+- [ ] use typescript to create simulation client, julia just doesn't cut it
 - [ ] provide different probability models to simulate realistic vote streams (for different use cases / ranking methods)
