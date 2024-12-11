@@ -2,6 +2,7 @@
 
 ## General
 
+- [ ] remove `Observation<T>` type -> doesn't represent intervals -> premature abstraction
 - [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
 - [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
 - [ ] once data model is more stable, setup dev workflow with cargo watch

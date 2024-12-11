@@ -8,14 +8,6 @@ pub struct QnSampleInterval {
     pub start_time: i64,
 }
 
-// #[derive(FromRow, Serialize, Deserialize, Debug)]
-// pub struct QnStats {
-//     pub item_id: i32,
-//     pub submission_time: i64,
-//     pub upvotes: i32,
-//     pub upvote_share: f32,
-// }
-
 #[derive(FromRow, Serialize, Deserialize, Debug, Clone)]
 pub struct QnSample {
     pub item_id: i32,

@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Encode, FromRow};
 use std::fmt;
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 pub struct VoteEvent {
     pub vote_event_id: i32,
