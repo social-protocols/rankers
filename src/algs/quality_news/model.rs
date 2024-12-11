@@ -40,18 +40,30 @@ impl<'r> FromRow<'r, SqliteRow> for QnSample {
 
 pub struct QnSampleWithPrediction {
     pub sample: QnSample,
+    pub expected_upvotes: f32,
     pub expected_upvote_share: f32,
 }
 
-impl Score for QnSampleWithPrediction {
+#[derive(FromRow, Serialize, Deserialize, Debug, Clone)]
+pub struct QnStats {
+    pub item_id: i32,
+    pub updated_at: i64,
+    pub sample_time: i64,
+    pub submission_time: i64,
+    pub cumulative_upvotes: i32,
+    pub cumulative_expected_upvotes: f32,
+}
+
+impl Score for QnStats {
     fn score(&self) -> f32 {
-        let age_hours =
-            (self.sample.sample_time - self.sample.submission_time) as f32 / 1000.0 / 60.0 / 60.0;
-        // TODO: is this a sane default for 0.0 expected upvotes?
-        if self.expected_upvote_share == 0.0 {
-            return 1.0;
-        }
-        let estimated_upvote_rate: f32 = self.sample.upvote_share / self.expected_upvote_share;
+        let age_hours = (self.sample_time - self.submission_time) as f32 / 1000.0 / 60.0 / 60.0;
+        let estimated_upvote_rate: f32 = if self.cumulative_expected_upvotes == 0.0 {
+            // TODO: is this a sane default for 0.0 expected upvotes?
+            // TODO: use a global prior with bayesian averaging for initial guess of upvote rate
+            1.0
+        } else {
+            self.cumulative_upvotes as f32 / self.cumulative_expected_upvotes
+        };
         (age_hours * estimated_upvote_rate).powf(0.8) / (age_hours + 2.0).powf(1.8)
     }
 }
@@ -59,7 +71,6 @@ impl Score for QnSampleWithPrediction {
 #[derive(FromRow, Serialize, Deserialize, Debug)]
 pub struct ItemWithRanks {
     pub item_id: i32,
-    pub interval_id: i32,
     pub rank_top: i32,
     pub rank_new: i32,
 }

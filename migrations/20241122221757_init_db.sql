@@ -34,7 +34,7 @@ begin
     , vote
     , created_at
   )
-  values(
+  values (
       new.vote_event_id
     , new.item_id
     , new.user_id
@@ -52,11 +52,41 @@ create table if not exists qn_sample_interval (
 );
 
 create table if not exists stats_history (
-    item_id          integer not null references item(item_id)
-  , interval_id      integer not null references qn_sample_interval(interval_id)
-  , upvotes          integer not null
-  , upvote_share     real    not null
+    item_id               integer not null references item(item_id)
+  , interval_id           integer not null references qn_sample_interval(interval_id)
+  , upvotes               integer not null
+  , upvote_share          real    not null
+  , expected_upvotes      real    not null
+  , expected_upvote_share real    not null
 ) strict;
+
+create table if not exists stats (
+    item_id                     integer not null primary key references item(item_id)
+  , updated_at                  integer not null
+  , cumulative_upvotes          integer not null
+  , cumulative_expected_upvotes real    not null
+) strict;
+
+create trigger after_insert_stats_history
+after insert on stats_history
+begin
+  insert into stats (
+      item_id
+    , updated_at
+    , cumulative_upvotes
+    , cumulative_expected_upvotes
+  )
+  values (
+      new.item_id
+    , unixepoch('subsec') * 1000
+    , new.upvotes
+    , new.expected_upvotes
+  )
+  on conflict (item_id) do update set
+      updated_at                  = unixepoch('subsec') * 1000
+    , cumulative_upvotes          = stats.cumulative_upvotes + new.upvotes
+    , cumulative_expected_upvotes = stats.cumulative_expected_upvotes + new.expected_upvotes;
+end;
 
 create table if not exists rank_history (
     item_id     integer not null
@@ -70,53 +100,3 @@ create table if not exists expected_upvote_share_history (
   , interval_id           integer not null references qn_sample_interval(interval_id)
   , expected_upvote_share real    not null
 );
-
-create view if not exists item_pool as
-select *
-from item
-order by created_at desc
-limit 1500;
-
--- create view if not exists upvotes_at_rank_history as
--- with upvotes_at_sample_time as (
---   select
---       item_id
---     , sample_time
---     , coalesce(
---       upvotes - lag(upvotes) over (
---         partition by item_id
---         order by sample_time
---       ),
---       0
---     ) as upvotes_at_sample_time
---   from stats_history
--- )
--- , sitewide_upvotes_at_sample_time as (
---   select
---       sample_time
---     , sum(upvotes_at_sample_time) as sitewide_upvotes
---   from upvotes_at_sample_time
---   group by sample_time
--- )
--- select
---     rh.item_id
---   , rh.sample_time
---   , rh.rank_top
---   , rh.rank_new
---   , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
---   , suat.sitewide_upvotes
---   , coalesce(cast(uast.upvotes_at_sample_time as real) / suat.sitewide_upvotes, 0) as upvotes_share
--- from rank_history rh
--- left outer join upvotes_at_sample_time uast
---   on rh.item_id = uast.item_id
---   and rh.sample_time = uast.sample_time
--- join sitewide_upvotes_at_sample_time suat
---   on rh.sample_time = suat.sample_time;
-
--- TODO: This model only takes rank_top into account. We need a model that incorporates all ranks
--- create view if not exists upvote_share as
--- select
---     rank_top
---   , avg(upvotes_share) as upvote_share_at_rank
--- from upvotes_at_rank_history
--- group by rank_top;
