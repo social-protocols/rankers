@@ -46,10 +46,10 @@ begin
     , created_at    = new.created_at;
 end;
 
-create table if not exists qn_sample_interval {
+create table if not exists qn_sample_interval (
     interval_id integer not null primary key autoincrement
   , start_time  integer not null
-}
+);
 
 create table if not exists stats_history (
     item_id          integer not null references item(item_id)
@@ -69,7 +69,7 @@ create table if not exists expected_upvote_share_history (
     item_id               integer not null
   , interval_id           integer not null references qn_sample_interval(interval_id)
   , expected_upvote_share real    not null
-)
+);
 
 create view if not exists item_pool as
 select *
@@ -77,46 +77,46 @@ from item
 order by created_at desc
 limit 1500;
 
-create view if not exists upvotes_at_rank_history as
-with upvotes_at_sample_time as (
-  select
-      item_id
-    , sample_time
-    , coalesce(
-      upvotes - lag(upvotes) over (
-        partition by item_id
-        order by sample_time
-      ),
-      0
-    ) as upvotes_at_sample_time
-  from stats_history
-)
-, sitewide_upvotes_at_sample_time as (
-  select
-      sample_time
-    , sum(upvotes_at_sample_time) as sitewide_upvotes
-  from upvotes_at_sample_time
-  group by sample_time
-)
-select
-    rh.item_id
-  , rh.sample_time
-  , rh.rank_top
-  , rh.rank_new
-  , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
-  , suat.sitewide_upvotes
-  , coalesce(cast(uast.upvotes_at_sample_time as real) / suat.sitewide_upvotes, 0) as upvotes_share
-from rank_history rh
-left outer join upvotes_at_sample_time uast
-  on rh.item_id = uast.item_id
-  and rh.sample_time = uast.sample_time
-join sitewide_upvotes_at_sample_time suat
-  on rh.sample_time = suat.sample_time;
+-- create view if not exists upvotes_at_rank_history as
+-- with upvotes_at_sample_time as (
+--   select
+--       item_id
+--     , sample_time
+--     , coalesce(
+--       upvotes - lag(upvotes) over (
+--         partition by item_id
+--         order by sample_time
+--       ),
+--       0
+--     ) as upvotes_at_sample_time
+--   from stats_history
+-- )
+-- , sitewide_upvotes_at_sample_time as (
+--   select
+--       sample_time
+--     , sum(upvotes_at_sample_time) as sitewide_upvotes
+--   from upvotes_at_sample_time
+--   group by sample_time
+-- )
+-- select
+--     rh.item_id
+--   , rh.sample_time
+--   , rh.rank_top
+--   , rh.rank_new
+--   , coalesce(uast.upvotes_at_sample_time, 0) as upvotes
+--   , suat.sitewide_upvotes
+--   , coalesce(cast(uast.upvotes_at_sample_time as real) / suat.sitewide_upvotes, 0) as upvotes_share
+-- from rank_history rh
+-- left outer join upvotes_at_sample_time uast
+--   on rh.item_id = uast.item_id
+--   and rh.sample_time = uast.sample_time
+-- join sitewide_upvotes_at_sample_time suat
+--   on rh.sample_time = suat.sample_time;
 
 -- TODO: This model only takes rank_top into account. We need a model that incorporates all ranks
-create view if not exists upvote_share as
-select
-    rank_top
-  , avg(upvotes_share) as upvote_share_at_rank
-from upvotes_at_rank_history
-group by rank_top;
+-- create view if not exists upvote_share as
+-- select
+--     rank_top
+--   , avg(upvotes_share) as upvote_share_at_rank
+-- from upvotes_at_rank_history
+-- group by rank_top;

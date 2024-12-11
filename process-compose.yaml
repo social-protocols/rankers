@@ -2,7 +2,7 @@ version: "0.5"
 
 processes:
   service:
-    command: "cargo run"
+    command: "RUST_BACKTRACE=1 cargo run"
     availability:
       restart: "always"
     depends_on:

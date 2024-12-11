@@ -10,6 +10,10 @@ setup-dev-env:
 dev:
   process-compose up -t=false
 
+# Run the service
+run:
+  cargo run
+
 # Enter an interactive sqlite session
 db:
   litecli $DATABASE_PATH
