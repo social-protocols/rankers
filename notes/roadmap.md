@@ -2,7 +2,6 @@
 
 ## General
 
-- [ ] remove `Observation<T>` type -> doesn't represent intervals -> premature abstraction
 - [ ] once data model is more stable, setup dev workflow with cargo watch
 - [ ] setup configuration options -> if only certain rankings are required, some tasks don't need to be added to the scheduler (e.g., QN rankings require periodical sampling of stats)
 

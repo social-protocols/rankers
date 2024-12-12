@@ -47,11 +47,6 @@ pub struct ScoredItem {
     pub score: f32,
 }
 
-pub struct Observation<T> {
-    pub sample_time: i64,
-    pub data: T,
-}
-
 pub trait Score {
     fn score(&self) -> f32;
 }

@@ -1,6 +1,6 @@
 use crate::common::{
     error::AppError,
-    model::{Observation, RankingPage, Score, ScoredItem},
+    model::{RankingPage, Score, ScoredItem},
     time::now_utc_millis,
 };
 use serde::{Deserialize, Serialize};
@@ -9,12 +9,13 @@ use sqlx::{query_as, FromRow, Sqlite, Transaction};
 #[derive(FromRow, Serialize, Deserialize, Debug, Clone)]
 struct NewestStats {
     item_id: i32,
-    created_at: i64,
+    sample_time: i64,
+    submission_time: i64,
 }
 
-impl Score for Observation<NewestStats> {
+impl Score for NewestStats {
     fn score(&self) -> f32 {
-        let age_hours = (self.sample_time - self.data.created_at) as f32 / 60.0 / 60.0;
+        let age_hours = (self.sample_time - self.submission_time) as f32 / 60.0 / 60.0;
         1.0 / age_hours
     }
 }
@@ -25,25 +26,23 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
         "
         select
               item_id
-            , created_at
+            , ? as sample_time
+            , created_at as submission_time
         from item
         order by created_at desc
         limit 1500
         ",
     )
+    .bind(sample_time)
     .fetch_all(&mut **tx)
     .await?
     .iter()
-    .map(|item| Observation {
-        sample_time,
-        data: item.clone(),
-    })
     .enumerate()
-    .map(|(i, obs)| ScoredItem {
-        item_id: obs.data.item_id,
+    .map(|(i, stat)| ScoredItem {
+        item_id: stat.item_id,
         rank: i as i32 + 1,
         page: RankingPage::Newest,
-        score: obs.score(),
+        score: stat.score(),
     })
     .collect();
 
