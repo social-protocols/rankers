@@ -44,9 +44,9 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
             ni.item_id
           , ? as sample_time
           , ni.created_at as submission_time
-          , uc.upvotes
+          , coalesce(uc.upvotes, 0) as upvotes
         from newest_items ni
-        join upvote_counts uc
+        left outer join upvote_counts uc
         on ni.item_id = uc.item_id
         ",
     )

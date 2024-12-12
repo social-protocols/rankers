@@ -16,7 +16,7 @@ processes:
     command: "./scripts/check_availability.sh"
 
   simulation:
-    command: "cd simulation && julia --project simulation.jl"
+    command: "cd sim && npm run sim"
     availability:
       restart: "never"
     depends_on:

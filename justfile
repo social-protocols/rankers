@@ -14,6 +14,9 @@ dev:
 run:
   cargo run
 
+run-reset:
+  just db-reset && just run
+
 # Enter an interactive sqlite session
 db:
   litecli $DATABASE_PATH

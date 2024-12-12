@@ -22,3 +22,19 @@ upvote share prediction:
 
 - predict upvote share from rank profile
 - seeding: to enable quality news ranking, we need some time to gather data -> so at first, just set QN rank = HN rank -> do that for a while, then train the model to predict upvote share -> then the feedback loop works 
+
+
+### Simulation
+
+Old Julia function to get probability at rank (Zipf's law):
+
+```
+function vote_prob_at_rank(rank::Int, total_items::Int)
+    @assert(rank <= total_items, "Rank must be smaller than total_items")
+    normalization_constant = sum([1 / k for k = 1:total_items])
+    return (1 / normalization_constant) * (1 / rank)
+end
+```
+
+TODO: port to TypeScript
+

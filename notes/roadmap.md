@@ -3,6 +3,9 @@
 ## RAM
 
 - [ ] simulation: use typescript to create simulation client, julia just doesn't cut it
+- [ ] iteration on error handling
+    - [ ] middleware layer to log requests
+    - [ ] find unhandled edge cases
 
 ## General
 
