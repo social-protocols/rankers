@@ -1,5 +1,9 @@
 # Roadmap
 
+## RAM
+
+- [ ] simulation: use typescript to create simulation client, julia just doesn't cut it
+
 ## General
 
 - [ ] once data model is more stable, setup dev workflow with cargo watch
@@ -7,7 +11,6 @@
 
 ## Simulation
 
-- [ ] use typescript to create simulation client, julia just doesn't cut it
 - [ ] provide different probability models to simulate realistic vote streams (for different use cases / ranking methods)
 
 ## Quality News Upvote Share Prediction
@@ -25,7 +28,6 @@
 
 ## API
 
-- [ ] register posts after receiving first vote instead of having separate `create_post` endpoint -> this means that `submission_time` (and potentially some other information about the post) must be in the vote event
 - [ ] `get_ranking/:method` endpoint (i.e., one endpoint for all rankings)
 - [ ] `get_score` endpoint (requiring: `post_id`, `method`)
 - [ ] sketch out documentation and guides
@@ -37,6 +39,7 @@
 
 ## Deployment
 
+- [ ] setup Earthfile for ci and deployment
 - [ ] create docker image
 - [ ] create a flake output for build
 
