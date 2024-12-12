@@ -3,12 +3,19 @@
 ## General
 
 - [ ] remove `Observation<T>` type -> doesn't represent intervals -> premature abstraction
-- [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
-- [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
 - [ ] once data model is more stable, setup dev workflow with cargo watch
-- [ ] create first client library
 - [ ] setup configuration options -> if only certain rankings are required, some tasks don't need to be added to the scheduler (e.g., QN rankings require periodical sampling of stats)
-- [ ] look into gRPC for generating clients
+
+## Simulation
+
+- [ ] use typescript to create simulation client, julia just doesn't cut it
+- [ ] provide different probability models to simulate realistic vote streams (for different use cases / ranking methods)
+
+## Quality News Upvote Share Prediction
+
+- [ ] put upvote share by rank calculation on a scheduler (doesn't need to be recalculated ad hoc, estimation every now and then is enough)
+- [ ] create a model that estimates page coefficients (schedule can be more drawn out, eg daily)
+- [ ] should the data be stored in another db? could help performance since 1500 items need to be retrieved and saved in every iteration
 
 ## Rankings
 
@@ -34,7 +41,7 @@
 - [ ] create docker image
 - [ ] create a flake output for build
 
-## Simulation
+## Clients
 
-- [ ] use typescript to create simulation client, julia just doesn't cut it
-- [ ] provide different probability models to simulate realistic vote streams (for different use cases / ranking methods)
+- [ ] look into gRPC for generating clients
+- [ ] create first client library
