@@ -239,7 +239,7 @@ pub async fn get_sample_in_interval(
     sample_time: i64,
 ) -> Result<Vec<QnSample>, AppError> {
     let sitewide_upvotes =
-        get_sitewide_upvotes_in_interval(tx, interval.start_time, sample_time).await? as f32;
+        get_sitewide_upvotes_in_interval(tx, sample_time, interval.start_time).await? as f32;
     let start_time = interval.start_time;
     let interval_id = interval.interval_id;
 

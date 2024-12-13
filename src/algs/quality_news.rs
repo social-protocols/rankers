@@ -63,7 +63,7 @@ pub async fn record_sample(
 
     // Evaluate stats in current sampling interval
     let sitewide_upvotes =
-        repository::get_sitewide_upvotes_in_interval(tx, sampling_interval.start_time, sample_time)
+        repository::get_sitewide_upvotes_in_interval(tx, sample_time, sampling_interval.start_time)
             .await?;
     let sample = repository::get_sample_in_interval(tx, &sampling_interval, sample_time).await?;
     let sample_with_predictions = calc_expected_upvote_shares(&sample, sitewide_upvotes).await?;
@@ -87,7 +87,7 @@ async fn calc_expected_upvote_shares(
     let stats_with_predictions: Vec<QnSampleWithPrediction> = stats
         .iter()
         .map(|r| {
-            let expected_upvote_share = repository::get_expected_upvote_share(r.item_id);
+            let expected_upvote_share = repository::get_expected_upvote_share(stats.len() as i32);
             QnSampleWithPrediction {
                 sample: r.clone(),
                 expected_upvotes: sitewide_upvotes as f32 * expected_upvote_share,
