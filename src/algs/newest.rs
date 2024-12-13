@@ -3,6 +3,7 @@ use crate::common::{
     model::{RankingPage, Score, ScoredItem},
     time::now_utc_millis,
 };
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sqlx::{query_as, FromRow, Sqlite, Transaction};
 
@@ -43,6 +44,12 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
         rank: i as i32 + 1,
         page: RankingPage::Newest,
         score: stat.score(),
+    })
+    .sorted_by(|a, b| {
+        a.score
+            .partial_cmp(&b.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .reverse()
     })
     .collect();
 

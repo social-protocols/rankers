@@ -17,6 +17,7 @@ pub async fn get_ranking(tx: &mut Transaction<'_, Sqlite>) -> Result<Vec<ScoredI
 
     let now = now_utc_millis();
     let stats = repository::get_stats(tx, now).await?;
+
     let scored_items: Vec<ScoredItem> = stats
         .iter()
         .sorted_by(|a, b| {
