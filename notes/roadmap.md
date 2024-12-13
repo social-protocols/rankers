@@ -2,7 +2,6 @@
 
 ## RAM
 
-- [ ] simulation: use typescript to create simulation client, julia just doesn't cut it
 - [ ] iteration on error handling
     - [ ] middleware layer to log requests
     - [ ] find unhandled edge cases
@@ -31,8 +30,6 @@
 
 ## API
 
-- [ ] `get_ranking/:method` endpoint (i.e., one endpoint for all rankings)
-- [ ] `get_score` endpoint (requiring: `post_id`, `method`)
 - [ ] sketch out documentation and guides
 
 ## CI/CD
