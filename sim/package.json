@@ -13,6 +13,7 @@
     "tsx": "^4.19.2"
   },
   "dependencies": {
+    "probability-distributions": "^0.9.1",
     "ts-case-convert": "^2.1.0"
   }
 }
