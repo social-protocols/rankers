@@ -1,16 +1,16 @@
 # rankers
 
 > [!WARNING]
-> Early stage project, don't use in production yet.
+> Very early stage.
 
 *A service that provides different ranking methods for a wide range of social software.*
 
 ## Features
 
-Implemented so far:
+Current state:
 
 - [Hacker News](https://news.ycombinator.com/)
-- [Quality News](https://news.social-protocols.org/)
+- [Quality News](https://news.social-protocols.org/) (WIP)
 
 ## Setup for Development
 
