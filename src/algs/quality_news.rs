@@ -109,7 +109,7 @@ fn calc_ranks(stats: &Vec<QnStats>) -> Vec<ItemWithRanks> {
                 .reverse()
         })
         .enumerate()
-        .sorted_by(|(_, a), (_, b)| a.submission_time.cmp(&b.submission_time))
+        .sorted_by(|(_, a), (_, b)| a.submission_time.cmp(&b.submission_time).reverse())
         .enumerate()
         .map(|(rank_new, (rank_top, obs))| ItemWithRanks {
             item_id: obs.item_id,
