@@ -1,0 +1,59 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-12-14"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(DBI)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+DB_PATH <- Sys.getenv("DATABASE_PATH")
+db <- dbConnect(RSQLite::SQLite(), DB_PATH)
+
+```
+
+
+```{r}
+dataset <- tbl(db, "rank_history") %>% 
+  inner_join(
+    tbl(db, "stats_history"),
+    by = c("item_id", "interval_id")
+  ) %>% 
+  select(item_id, interval_id, rank_top, rank_new, upvote_share) %>% 
+  mutate(
+    rank_top = as.numeric(rank_top),
+    rank_new = as.numeric(rank_new),
+  ) %>% 
+  data.frame()
+  
+dataset %>% 
+  arrange(item_id, interval_id) %>% 
+  filter(item_id == 7) %>%
+  select(interval_id, rank_top, rank_new, upvote_share) %>% 
+  pivot_longer(c("rank_top", "rank_new")) %>% 
+  mutate(name = as.factor(name)) %>% 
+  ggplot(aes(x = as.numeric(interval_id), y = value, color = name)) +
+  geom_point(aes(size = upvote_share)) +
+  geom_line() +
+  scale_x_continuous(breaks = 1:15) + 
+  scale_y_continuous(trans = "reverse", breaks = 1:15)
+
+```
+
+```{r}
+model <- lm(upvote_share ~ rank_top + rank_new, data = dataset)
+summary(model)
+
+```
+
+
+
+```{r}
+dbDisconnect(db)
+
+```
