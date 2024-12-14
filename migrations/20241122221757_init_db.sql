@@ -94,9 +94,3 @@ create table if not exists rank_history (
   , rank_top    integer
   , rank_new    integer
 ) strict;
-
-create table if not exists expected_upvote_share_history (
-    item_id               integer not null
-  , interval_id           integer not null references qn_sample_interval(interval_id)
-  , expected_upvote_share real    not null
-);
