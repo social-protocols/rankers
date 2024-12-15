@@ -29,8 +29,16 @@
           sqlite-interactive
           litecli
           sqlx-cli
+          earthly
         ];
         RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
+      };
+      packages.production = pkgs.buildEnv {
+        name = "rankers";
+        paths = with pkgs; rustDevPkgs ++ [
+          gcc
+          libgcc
+        ];
       };
     }
   );

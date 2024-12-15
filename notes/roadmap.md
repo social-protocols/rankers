@@ -39,9 +39,8 @@
 
 ## Deployment
 
-- [ ] setup Earthfile for ci and deployment
-- [ ] create docker image
-- [ ] create a flake output for build
+- [ ] make docker image significantly smaller
+- [ ] add volume to docker image for persistent data
 
 ## Clients
 
