@@ -8,7 +8,7 @@ pub struct QnSampleInterval {
     pub start_time: i64,
 }
 
-#[derive(FromRow, Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct QnSample {
     pub item_id: i32,
     pub interval: QnSampleInterval,
