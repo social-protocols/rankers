@@ -36,7 +36,9 @@ builder:
 
 docker-image:
   FROM debian:buster-slim
+  RUN apt-get update && apt-get install -y sqlite3
   WORKDIR /app
+  COPY --dir migrations .
   COPY +builder/target/x86_64-unknown-linux-musl/release/ranking-service .
   RUN mkdir -p data
   ENTRYPOINT ["/app/ranking-service"]
