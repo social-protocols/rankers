@@ -35,9 +35,9 @@
       };
       packages.production = pkgs.buildEnv {
         name = "rankers";
-        paths = with pkgs; rustDevPkgs ++ [
+        paths = with pkgs; [ rustToolchain ] ++ [
           gcc
-          libgcc
+          # ncdu
         ];
       };
     }
