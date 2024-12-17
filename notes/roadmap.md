@@ -39,7 +39,6 @@
 
 ## Deployment
 
-- [ ] make docker image significantly smaller
 - [ ] add volume to docker image for persistent data
 
 ## Clients
