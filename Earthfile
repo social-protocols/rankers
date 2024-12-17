@@ -20,78 +20,24 @@ VERSION 0.8
 #   RUN rm -rf /root/.cache
 #   RUN nix store optimise
 
-# build-service:
-#   FROM rust:1.83
-#   WORKDIR /rankers
-#   COPY --dir src migrations .
-#   COPY Cargo.toml Cargo.lock .
-#   RUN cargo build --release
-#   # RUN uditaren
-#   SAVE ARTIFACT target
-
-# docker-image:
-#   FROM rust:1.84-slim-buster
-#   WORKDIR /rankers
-#   # COPY --dir src migrations .
-#   COPY --dir migrations .
-#   # COPY Cargo.toml Cargo.lock flake.nix flake.lock rust-toolchain.toml .
-#   COPY +build-service/target/release/ranking-service /usr/local/bin/ranking-service
-#   # RUN nix build .#production
-#   # RUN export PATH="$PWD/result/bin:$PATH"
-#   RUN mkdir -p data
-#   # RUN uditaren
-#   EXPOSE 3000
-#   ENTRYPOINT [ "/usr/local/bin/ranking-service" ]
-#   SAVE IMAGE rankers:latest
-
-# docker-image:
-#   FROM debian:buster-slim
-#   RUN apt-get update && \
-#     apt-get install -y ca-certificates && \
-#     rm -rf /var/lib/apt/lists/*
-#   WORKDIR /rankers
-#   COPY --dir migrations .
-#   COPY +build-service/target/release/ranking-service /usr/local/bin/ranking-service
-#   RUN mkdir -p data
-#   # RUN uditaren
-#   EXPOSE 3000
-#   ENTRYPOINT [ "/usr/local/bin/ranking-service" ]
-#   SAVE IMAGE rankers:latest
-
 builder:
-  # Use the official Rust image as a base
   FROM rust:latest
-
-  # Install musl-tools
   RUN apt-get update && apt-get install -y musl-tools
-
-  # Create a new directory for the application
   WORKDIR /app
-
-  # Copy the source code into the container
-  COPY . .
-
-  # Switch to nightly if necessary
+  COPY --dir src migrations .
+  COPY Cargo.toml Cargo.lock .
   RUN rustup toolchain install nightly
+  RUN rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
   RUN rustup default nightly
-
-  # Add the musl target
   RUN rustup target add x86_64-unknown-linux-musl
-
-  # Build with the standard library
   RUN cargo +nightly build --release --target x86_64-unknown-linux-musl -Z build-std
-
-  # Build the Rust application with musl
   RUN cargo build --release --target x86_64-unknown-linux-musl --verbose
-
   SAVE ARTIFACT target
 
 docker-image:
-  # Create a smaller final image
-  FROM scratch
-
-  # Copy the statically linked executable from the builder
-  COPY +builder/app/target/x86_64-unknown-linux-musl/release/ranking-service /ranking-service
-
-  # Set the entry point to the executable
-  ENTRYPOINT ["/ranking-service"]
+  FROM debian:buster-slim
+  WORKDIR /app
+  COPY +builder/target/x86_64-unknown-linux-musl/release/ranking-service .
+  RUN mkdir -p data
+  ENTRYPOINT ["/app/ranking-service"]
+  SAVE IMAGE rankers:latest
