@@ -18,8 +18,10 @@ db <- dbConnect(RSQLite::SQLite(), DB_PATH)
 ```
 
 
+## Datasets
+
 ```{r}
-dataset <- tbl(db, "rank_history") %>% 
+qn_samples <- tbl(db, "rank_history") %>% 
   inner_join(
     tbl(db, "stats_history"),
     by = c("item_id", "interval_id")
@@ -31,7 +33,14 @@ dataset <- tbl(db, "rank_history") %>%
   ) %>% 
   data.frame()
   
-dataset %>% 
+vote_events <- tbl(db, "vote_event") %>% data.frame()
+```
+
+
+## Sanity Checks
+
+```{r}
+qn_samples %>% 
   arrange(item_id, interval_id) %>% 
   filter(item_id == 7) %>%
   select(interval_id, rank_top, rank_new, upvote_share) %>% 
@@ -40,14 +49,43 @@ dataset %>%
   ggplot(aes(x = as.numeric(interval_id), y = value, color = name)) +
   geom_point(aes(size = upvote_share)) +
   geom_line() +
-  scale_x_continuous(breaks = 1:15) + 
-  scale_y_continuous(trans = "reverse", breaks = 1:15)
+  scale_x_continuous(breaks = seq(0, 1000, 10)) + 
+  scale_y_continuous(trans = "reverse", breaks = seq(0, 1000, 10))
+
+vote_events %>% 
+  group_by(page) %>% 
+  summarize(count = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = page, y = count)) +
+  geom_histogram(stat = "identity")
+
+vote_events %>% 
+  group_by(rank, page) %>% 
+  summarize(count = n()) %>% 
+  ungroup() %>% 
+  mutate(
+    rank = as.numeric(rank),
+    count = as.numeric(count)
+  ) %>% 
+  ggplot(aes(x = rank, y = count, color = page)) +
+  geom_line() +
+  geom_point()
 
 ```
 
-```{r}
-model <- lm(upvote_share ~ rank_top + rank_new, data = dataset)
+
+## Oversimlified Model
+
+```{r, eval=FALSE}
+model <- lm(upvote_share ~ rank_top + rank_new, data = qn_samples)
 summary(model)
+
+data_sample <- data.frame(
+  rank_top = c(1, 5, 32),
+  rank_new = c(17, 61, 74)
+)
+
+predict.lm(model, data_sample)
 
 ```
 
