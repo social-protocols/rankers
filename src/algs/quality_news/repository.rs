@@ -56,7 +56,6 @@ pub async fn get_sitewide_upvotes_in_interval(
 }
 
 // TODO: create poisson regression model to estimate upvote share
-#[allow(dead_code)]
 pub fn get_expected_upvote_share(n_items: i32) -> f32 {
     1.0 / n_items as f32
 }
