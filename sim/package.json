@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/probability-distributions": "^0.1.3",
     "tsx": "^4.19.2"
   },
   "dependencies": {

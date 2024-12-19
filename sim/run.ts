@@ -30,19 +30,25 @@ enum Page {
   HackerNews = 'HackerNews',
   QualityNews = 'QualityNews',
 }
+  
+const API_ENDPOINTS: Record<Page, string> = {
+  [Page.Newest]: '/rankings/newest',
+  [Page.HackerNews]: '/rankings/hn',
+  [Page.QualityNews]: '/rankings/qn',
+}
 
 enum Action {
   PostItem,
   PostVoteEvent,
 }
 
+function getEndpoint(page: Page): string {
+  return API_ENDPOINTS[page]
+}
+
 async function getRanking(page: Page): Promise<Array<ScoredItem>> {
-  const endpoint = page === Page.Newest ?
-    '/rankings/newest' : (
-    page === Page.HackerNews ?
-      '/rankings/hn' :
-      '/rankings/qn'
-  )
+  const endpoint = getEndpoint(page)
+
   const url = 'http://localhost:3000' + endpoint
 
   const response = await fetch(url)
@@ -51,9 +57,14 @@ async function getRanking(page: Page): Promise<Array<ScoredItem>> {
     throw new Error(`HTTP error! status: ${response.status}`)
   }
 
-  let ranking = objectToCamel(await response.json())
+  const data = await response.json()
+  const ranking = objectToCamel(data)
+  
+  if (!Array.isArray(ranking)) {
+    throw new Error('Ranking is not an array')    
+  }
 
-  return ranking
+  return ranking as ScoredItem[]
 }
 
 async function postItem(item: Item): Promise<boolean> {
@@ -105,12 +116,10 @@ function chooseAction() {
 function chooseRank(nRanks: number): number {
   const ranks = Array.from({ length: nRanks }, (_, index) => index + 1)
 
-  const probabilitiesUnnormalized = ranks.map(r => 1 / r)
-
   const normalizationConstant =
-    probabilitiesUnnormalized.reduce((sum, current) => sum + current, 0)
+    ranks.map(r => 1 / r).reduce((sum, current) => sum + current, 0)
 
-  const probabilities = probabilitiesUnnormalized.map((prob, i) => (1 / normalizationConstant) * (1 / (i + 1)))
+  const probabilities = ranks.map(rank => (1 / normalizationConstant) * (1 / rank))
 
   return PD.sample(ranks, 1, true, probabilities)[0]
 }
@@ -158,7 +167,7 @@ async function main() {
   // Wait for quality news sampling to be initialized
   await sleep(5000)
 
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 1000; i++) {
     let action = chooseAction()
     let user = chooseUser(users)
     if (action == Action.PostItem) {
