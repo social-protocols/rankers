@@ -1,0 +1,25 @@
+{
+  "packages": [
+    "rustup",
+    "git",
+    "entr",
+    "just",
+    "curl",
+    "process-compose",
+    "sqlite",
+    "litecli",
+    "sqlx-cli",
+    "earthly",
+    "nodejs"
+  ],
+  "env": {
+    "RUST_SRC_PATH": "$DEVPATH/rust/src",
+    "PATH": "$PATH:$PWD/sim/node_modules/.bin"
+  },
+  "init_hook": [
+    "rustup toolchain install stable",
+    "rustup default stable",
+    "rustup component add rust-src",
+    "cd sim && npm install"
+  ]
+} 
