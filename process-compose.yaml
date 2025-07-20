@@ -18,7 +18,7 @@ processes:
   simulation:
     command: "cd sim && npm run sim"
     availability:
-      restart: "never"
+      restart: "no"
     depends_on:
       service_available:
         condition: process_completed
